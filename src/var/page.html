@@ -24,6 +24,7 @@
   * { box-sizing: border-box; }
   :root { color-scheme: light dark; }
   body { touch-action: manipulation; }
+  a, button, select, input { -webkit-tap-highlight-color: transparent; }
   .skip { position: absolute; left: 16px; top: -48px; padding: 8px 12px; background: var(--text);
           color: var(--surface); border-radius: 4px; z-index: 20; }
   .skip:focus { top: 8px; }
@@ -78,6 +79,7 @@
   .holding { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) auto; gap: 8px; }
   .calc select, .calc button { font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--grid); border-radius: 6px; padding: 8px 10px; }
   .calc button { cursor: pointer; touch-action: manipulation; }
+  .calc button:active { background: var(--surface-2); }
   @media (hover: hover) and (pointer: fine) { .calc button:hover { border-color: var(--text-2); } }
   @media (max-width: 480px) { .holding { grid-template-columns: minmax(0, 1fr) auto; } .holding select { grid-column: 1 / -1; } }
   .calc-controls { display: flex; flex-wrap: wrap; gap: 12px 16px; align-items: end; grid-column: 1 / -1; }
@@ -104,7 +106,7 @@ $sections
 <footer class="wrap">
 <p>Rebuilt every week by GitHub Actions from fresh prices. The calculator runs entirely in your browser;
 nothing you enter leaves it.</p>
-<p>Prices: Yahoo Finance, with known errors repaired (see the repository). Today's NIFTY 50 members.
+<p>Prices: Yahoo Finance, with known errors repaired (see the repository). Today’s NIFTY 50 members.
 For research and education, not investment advice.</p>
 </footer>
 <script>

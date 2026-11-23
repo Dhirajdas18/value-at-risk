@@ -46,8 +46,11 @@ const DATA = $data;
     const options = DATA.symbols.map((s) => `<option value="${s}"${s === sym ? " selected" : ""}>${label(s)}</option>`).join("");
     row.innerHTML = `<select aria-label="Holding">${options}</select>` +
       `<input type="number" min="0" step="1000" inputmode="numeric" autocomplete="off" aria-label="Amount in rupees" value="${amount}">` +
-      `<button type="button" class="remove" aria-label="Remove holding">Remove</button>`;
-    row.querySelector(".remove").addEventListener("click", () => { row.remove(); update(); });
+      `<button type="button" class="remove">Remove</button>`;
+    const sel = row.querySelector("select"), rm = row.querySelector(".remove");
+    const name = () => rm.setAttribute("aria-label", `Remove ${label(sel.value)}`);
+    sel.addEventListener("change", name); name();
+    rm.addEventListener("click", () => { row.remove(); update(); });
     rows.appendChild(row);
   };
   const update = () => {
@@ -71,7 +74,7 @@ const DATA = $data;
       ["Cornish-Fisher", valid ? cornishFisher(m.mean, m.sd, m.skew, m.kurt, alpha) : null]];
     out.innerHTML = res.map(([name, v]) => `<tr><th scope="row">${name}</th>` + (v
       ? `<td>${rupees(v[0] * total)}</td><td>${rupees(v[1] * total)}</td>`
-      : `<td colspan="2">${name === "Cornish-Fisher" ? `not valid here: the tails are too fat (excess kurtosis ${m.kurt.toFixed(1)})` : "needs at least 3 years of shared history"}</td>`) + "</tr>").join("");
+      : `<td colspan="2">${name === "Cornish-Fisher" ? `not valid here: the tails are too fat (excess kurtosis ${m.kurt.toFixed(1)})` : "needs at least 531 shared trading days (about 2 years)"}</td>`) + "</tr>").join("");
     const ten = historical(horizon(r, 10), alpha)[0], one = historical(r, alpha)[0];
     note.textContent = `${r.length} trading days of shared history, up to ${DATA.last}. ` +
       `10-day historical VaR: ${rupees(ten * total)}; 1-day × √10 would say ${rupees(one * Math.sqrt(10) * total)}.`;
@@ -87,7 +90,7 @@ const DATA = $data;
         `<td>${pnl < 0 ? rupees(-pnl) : "gain of " + rupees(pnl)}</td><td>${pnl < 0 ? (-pnl / (one * total)).toFixed(1) + "×" : "–"}</td>` +
         `<td>${day(sc.start)} and ${day(sc.end)} (${sc.days} trading day${sc.days > 1 ? "s" : ""})</td></tr>`;
     }).join("");
-    stressNote.textContent = "Each scenario applies every holding's move between those closes to today's amounts." +
+    stressNote.textContent = "Each scenario applies every holding’s move between those closes to today’s amounts." +
       (proxied.size ? ` * No prices then for ${[...proxied].join(", ")}: moved by its beta to the NIFTY index (an index ETF moves with the index).` : "");
   };
   document.getElementById("add").addEventListener("click", () => { addRow(DATA.symbols[0], 100000); update(); });

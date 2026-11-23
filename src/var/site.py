@@ -156,13 +156,13 @@ def options_figure(r: pd.DataFrame) -> go.Figure:
 
 SECTIONS = [
     ("VaR calculator",
-     "Enter rupee amounts in any of today's NIFTY 50 stocks or the NIFTY and gold ETFs. The page "
-     "replays the chosen window of past daily returns on today's holdings: the historical loss "
+     "Enter rupee amounts in any of today’s NIFTY 50 stocks or the NIFTY and gold ETFs. The page "
+     "replays the chosen window of past daily returns on today’s holdings: the historical loss "
      "exceeded on only 1% of days is the 99% VaR, and the average loss on those days the expected "
-     "shortfall. Filtered historical rescales those days to today's volatility (the method that "
+     "shortfall. Filtered historical rescales those days to today’s volatility (the method that "
      "passed the backtests below); the normal method assumes a bell curve; Cornish-Fisher corrects "
-     "it for skew and fat tails when they aren't too extreme. Below the totals: how much of the "
-     "expected shortfall each holding carries, and what four of history's worst episodes would "
+     "it for skew and fat tails when they aren’t too extreme. Below the totals: how much of the "
+     "expected shortfall each holding carries, and what four of history’s worst episodes would "
      "cost these holdings today.",
      calculator_section),
     ("Methods compared",
@@ -171,8 +171,8 @@ SECTIONS = [
      "history.",
      methods_figure),
     ("Backtesting",
-     "Each day's 99% VaR forecast from past data only, for the NIFTY ETF, counted against what "
-     "happened. Basel's traffic light: up to 4 breaches in 250 days is green, 5 to 9 yellow, 10 or "
+     "Each day’s 99% VaR forecast from past data only, for the NIFTY ETF, counted against what "
+     "happened. Basel’s traffic light: up to 4 breaches in 250 days is green, 5 to 9 yellow, 10 or "
      "more red. The 1000-day VaR breached about as often as promised overall, but its breaches "
      "came in bunches and it went deepest into the red in 2020.",
      traffic_figure),
@@ -181,7 +181,7 @@ SECTIONS = [
      "with India VIX as the volatility, replayed through every 10-day NIFTY and VIX move since "
      "2009. "
      "Greeks approximations (delta; delta-gamma; plus vega) against repricing every option: "
-     "delta-gamma understates the short put's VaR and overstates the short straddle's.",
+     "delta-gamma understates the short put’s VaR and overstates the short straddle’s.",
      options_figure),
 ]
 
