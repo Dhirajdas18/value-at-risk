@@ -241,4 +241,109 @@ def report_backtest(out_dir: Path) -> dict:
     return out
 
 
-REPORTS = {"methods": report_methods, "backtest": report_backtest}
+def fhs_forecasts(p: pd.Series, alpha: float = 0.99) -> dict:
+    """Daily VaR forecasts (past data only) for the topic 3 comparison."""
+    from var.backtest import rolling_var
+    from var.fhs import ewma_vol, fhs_var, garch_vol
+
+    e, g = ewma_vol(p), garch_vol(p, 500, 21)
+    return {"historical, 250 days": rolling_var(p, "historical", 250, alpha),
+            "historical, 1000 days": rolling_var(p, "historical", 1000, alpha),
+            "EWMA volatility, normal curve": -e * norm.ppf(1 - alpha),
+            "filtered historical, EWMA": fhs_var(p, e, 500, alpha),
+            "filtered historical, GARCH": fhs_var(p, g, 500, alpha)}
+
+
+def score(p: pd.Series, forecasts: dict, alpha: float = 0.99) -> dict:
+    from var.backtest import christoffersen, kupiec
+
+    start = max(f.dropna().index[0] for f in forecasts.values())
+    out = {}
+    for k, f in forecasts.items():
+        f = f[f.index >= start].dropna()
+        hit = p.reindex(f.index) < -f
+        n, x = len(hit), int(hit.sum())
+        roll = hit.rolling(250).sum().dropna()
+        out[k] = {"var": f, "hits": hit, "rate": x / n, "x": x, "n": n,
+                  "kupiec": kupiec(x, n, 1 - alpha)[1], "indep": christoffersen(hit.to_numpy())[1],
+                  "after": float(hit[hit.shift(1, fill_value=False)].mean()), "roll": roll,
+                  "red": float((roll >= 10).mean())}
+    return out
+
+
+def report_fhs(out_dir: Path) -> dict:
+    """Filtered historical simulation against topic 2's methods, NIFTY ETF and five stocks."""
+    R = returns()
+    R = R[R.index >= START]
+    res = {}
+    for name in ("NIFTY ETF", "5 large stocks"):
+        h = PORTFOLIOS[name]
+        p = portfolio_returns(R[list(h)].dropna(), h)
+        res[name] = (p, score(p, fhs_forecasts(p)))
+    p, sc = res["NIFTY ETF"]
+
+    fig, ax = plt.subplots(figsize=(9, 4.6))
+    lo, hi = "2019-10-01", "2021-06-30"
+    seg = p.loc[lo:hi]
+    ax.plot(seg.index, seg * 100, color=plots.MUTED, lw=0.8, label="daily return")
+    for k, c in (("historical, 1000 days", plots.SERIES[1]),
+                 ("filtered historical, EWMA", plots.SERIES[0])):
+        v = sc[k]["var"].loc[lo:hi]
+        ax.plot(v.index, -v * 100, color=c, lw=1.6, label=f"99% VaR, {k}")
+        hits = sc[k]["hits"].loc[lo:hi]
+        ax.plot(hits[hits].index, seg.reindex(hits[hits].index) * 100, "o", ms=4, color=c)
+    ax.set_ylabel("NIFTY ETF daily return, %")
+    ax.legend(loc="lower right", fontsize=8)
+    ax.set_title("Filtered historical VaR widened within days of the 2020 crash")
+    plots.save(fig, out_dir, "fhs_crash")
+
+    names = list(sc)
+    fig, (a1, a2) = plt.subplots(1, 2, figsize=(9, 4.8), sharey=True)
+    ys = np.arange(len(names))[::-1]
+    rates = [sc[k]["rate"] * 100 for k in names]
+    after = [sc[k]["after"] * 100 for k in names]
+    a1.barh(ys, rates, 0.55, color=[plots.SERIES[0] if sc[k]["kupiec"] >= 0.05 else plots.MUTED
+                                    for k in names])
+    a1.axvline(1, color=plots.TEXT, ls="--", lw=1)
+    a2.barh(ys, after, 0.55, color=[plots.SERIES[0] if sc[k]["indep"] >= 0.05 else plots.MUTED
+                                    for k in names])
+    a2.axvline(1, color=plots.TEXT, ls="--", lw=1)
+    for i in range(len(names)):
+        a1.text(rates[i] + 0.03, ys[i], f"{rates[i]:.2f}%", va="center", fontsize=8)
+        a2.text(after[i] + 0.3, ys[i], f"{after[i]:.1f}%", va="center", fontsize=8)
+    a1.set_yticks(ys, names, fontsize=9)
+    a1.set_title("days breached (promise: 1%)", fontsize=10, fontweight="normal",
+                 color=plots.TEXT_2)
+    a2.set_title("breached again the next day (should be 1%)", fontsize=10, fontweight="normal",
+                 color=plots.TEXT_2)
+    for a in (a1, a2):
+        a.grid(axis="y", visible=False)
+    fig.suptitle("NIFTY ETF: only filtered historical VaR passed both tests (blue = passes)",
+                 x=0.06, ha="left", fontsize=13, fontweight="semibold", color=plots.TEXT)
+    plots.save(fig, out_dir, "fhs_scorecard")
+
+    fig, ax = plt.subplots(figsize=(9, 4.6))
+    ax.axhspan(-0.5, 4.5, color=plots.SERIES[2], alpha=0.10)
+    ax.axhspan(4.5, 9.5, color=plots.SERIES[3], alpha=0.15)
+    ax.axhspan(9.5, 17, color=plots.SERIES[7], alpha=0.10)
+    for k, c in (("historical, 1000 days", plots.SERIES[1]),
+                 ("filtered historical, EWMA", plots.SERIES[0])):
+        roll = sc[k]["roll"]
+        ax.plot(roll.index, roll, color=c, label=k)
+    ax.set_ylabel("breaches of 99% VaR in the last 250 days")
+    ax.legend(loc="upper left", fontsize=9)
+    ax.set_title("Filtered historical VaR never reached Basel's red zone")
+    plots.save(fig, out_dir, "fhs_traffic")
+
+    out = {}
+    for name, (_, s_) in res.items():
+        out[name] = {k: (f"{v['x']}/{v['n']} = {v['rate']:.2%}", f"kupiec p {v['kupiec']:.3f}",
+                         f"indep p {v['indep']:.3f}", f"after {v['after']:.1%}",
+                         f"max250 {int(v['roll'].max())}", f"red {v['red']:.0%}",
+                         f"avg VaR {v['var'].mean():.2%}") for k, v in s_.items()}
+    crash = {k: f"{sc[k]['var'].loc['2020-03-23']:.2%}" for k in names}
+    out["VaR on 23 Mar 2020"] = crash
+    return out
+
+
+REPORTS = {"methods": report_methods, "backtest": report_backtest, "fhs": report_fhs}

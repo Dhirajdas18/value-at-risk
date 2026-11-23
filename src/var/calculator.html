@@ -49,11 +49,13 @@ const DATA = $data;
     const r = portfolio(recent, holdings);
     if (r.length < 60) { out.innerHTML = ""; note.textContent = "Not enough shared history for these holdings in this window."; return; }
     const m = moments(r), valid = cfValid(m.skew, m.kurt);
-    const res = [["Historical", historical(r, alpha)], ["Normal", normal(m.mean, m.sd, alpha)],
+    const res = [["Historical", historical(r, alpha)],
+      ["Filtered historical (EWMA)", r.length > 530 ? fhsToday(r, 0.94, Math.min(500, r.length - 30), alpha) : null],
+      ["Normal", normal(m.mean, m.sd, alpha)],
       ["Cornish-Fisher", valid ? cornishFisher(m.mean, m.sd, m.skew, m.kurt, alpha) : null]];
     out.innerHTML = res.map(([name, v]) => `<tr><th scope="row">${name}</th>` + (v
       ? `<td>${rupees(v[0] * total)}</td><td>${rupees(v[1] * total)}</td>`
-      : `<td colspan="2">not valid here: the tails are too fat (excess kurtosis ${m.kurt.toFixed(1)})</td>`) + "</tr>").join("");
+      : `<td colspan="2">${name === "Cornish-Fisher" ? `not valid here: the tails are too fat (excess kurtosis ${m.kurt.toFixed(1)})` : "needs at least 3 years of shared history"}</td>`) + "</tr>").join("");
     const ten = historical(horizon(r, 10), alpha)[0], one = historical(r, alpha)[0];
     note.textContent = `${r.length} trading days of shared history, up to ${DATA.last}. ` +
       `10-day historical VaR: ${rupees(ten * total)}; 1-day × √10 would say ${rupees(one * Math.sqrt(10) * total)}.`;

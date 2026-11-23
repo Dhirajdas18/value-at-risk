@@ -123,8 +123,9 @@ SECTIONS = [
      "Enter rupee amounts in any of today's NIFTY 50 stocks or the NIFTY and gold ETFs. The page "
      "replays the chosen window of past daily returns on today's holdings: the historical loss "
      "exceeded on only 1% of days is the 99% VaR, and the average loss on those days the expected "
-     "shortfall. The normal method assumes a bell curve; Cornish-Fisher corrects it for skew and "
-     "fat tails when they aren't too extreme.",
+     "shortfall. Filtered historical rescales those days to today's volatility (the method that "
+     "passed the backtests below); the normal method assumes a bell curve; Cornish-Fisher corrects "
+     "it for skew and fat tails when they aren't too extreme.",
      calculator_section),
     ("Methods compared",
      "Three ₹10 lakh portfolios, daily returns since January 2009. A normal curve puts the 99% "

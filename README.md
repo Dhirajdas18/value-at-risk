@@ -17,7 +17,7 @@ you enter leaves the page.
 - [x] Historical, normal, Cornish-Fisher and Monte Carlo (normal, Student-t) VaR and expected shortfall; 10-day horizons
 - [x] In-browser calculator, tested against the Python implementation through Node
 - [x] Backtesting: Kupiec, Christoffersen, Basel traffic light
-- [ ] Filtered historical simulation (EWMA / GARCH)
+- [x] Filtered historical simulation (EWMA / GARCH), also in the calculator
 - [ ] Expected shortfall at 97.5% and its backtest
 - [ ] Extreme value theory for 99.9%
 - [ ] Marginal and component VaR; historical stress scenarios
@@ -92,12 +92,45 @@ random, not in clusters (Christoffersen's test: is a breach more likely the day 
   days) in 2020; the 1000-day VaR went deeper, to 16 breaches against 11, and stayed red from March 2020 to
   March 2021.
 
+### 3. Rescaling history to today's volatility passed both backtests and never reached Basel's red zone
+
+<a href="docs/img/fhs_scorecard.png"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/img/fhs_scorecard.png"><img src="docs/img/fhs_scorecard.gif" alt="Breach rate and next-day repeat breaches for five VaR methods on the NIFTY ETF" width="720"></picture></a>
+
+Filtered historical simulation divides each past day's return by that day's volatility forecast, keeps the
+resulting shocks, and scales their historical quantile by tomorrow's volatility forecast: the tail's shape
+comes from history and its size from today. Volatility is EWMA (RiskMetrics, λ 0.94) or GARCH(1,1)
+refitted monthly on the previous 500 days; shocks from the previous 500 days. Same days as section 2.
+
+| NIFTY ETF, 99%, 2013–2026 | Breaches | Right count? (Kupiec p) | Breach the day after a breach | Most breaches in 250 days |
+|---|---|---|---|---|
+| Historical, 1000 days | 1.08% | yes (0.63) | 18.9% (p < 0.01) | 16 (red) |
+| EWMA volatility, normal curve | 2.05% | no (p < 0.01) | 1.4% | 12 (red) |
+| **Filtered historical, EWMA** | **1.08%** | **yes (0.63)** | **2.7% (p = 0.42)** | **8** |
+| Filtered historical, GARCH | 1.29% | yes (0.10) | 2.3% (p = 0.60) | 8 |
+
+- **Two ingredients, two fixes:** scaling by current volatility fixed the timing (EWMA with a normal curve
+  stopped clustering, 1.4% repeat breaches) but not the count (2.05%); keeping history's fat-tailed shocks
+  fixed the count. Filtered historical simulation has both.
+- **Cheaper on average:** its average VaR was 2.34% of the portfolio against 2.51% for the 1000-day method,
+  with the same breach count.
+- **Five stocks agree:** filtered historical, EWMA breached 1.08% of days there too, with no clustering.
+
+<table><tr>
+<td><a href="docs/img/fhs_crash.png"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/img/fhs_crash.png"><img src="docs/img/fhs_crash.gif" alt="NIFTY ETF returns from October 2019 to June 2021 with 1000-day historical and filtered historical VaR and their breaches"></picture></a></td>
+<td><a href="docs/img/fhs_traffic.png"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/img/fhs_traffic.png"><img src="docs/img/fhs_traffic.gif" alt="Breaches in the last 250 days for 1000-day historical and filtered historical VaR against Basel zones"></picture></a></td>
+</tr></table>
+
+- **March 2020 (left):** on 23 March 2020 the filtered historical VaR stood at 10.0% of the portfolio,
+  against 2.3% for the 1000-day historical VaR; the filtered one was breached early in the fall and then
+  kept pace, the 1000-day one again and again.
+- **Basel (right):** filtered historical VaR peaked at 8 breaches in 250 days (yellow) and never went red.
+
 ## Quick start
 
 ```bash
 uv sync
 uv run python scripts/fetch_data.py         # Yahoo Finance -> data/prices.parquet
-uv run var report methods                   # also: backtest; charts -> out/
+uv run var report methods                   # also: backtest, fhs; charts -> out/
 uv run python scripts/build_site.py         # dashboard and calculator -> site/index.html
 uv run pytest
 ```
@@ -107,6 +140,7 @@ uv run pytest
 - `src/var/var.py`: historical, normal, Cornish-Fisher (with a validity check) and Monte Carlo VaR and
   ES; portfolio returns from rupee holdings; overlapping multi-day returns.
 - `src/var/backtest.py`: rolling VaR forecasts, Kupiec and Christoffersen tests, Basel traffic light.
+- `src/var/fhs.py`: EWMA and GARCH(1,1) volatility forecasts and filtered historical simulation.
 - `src/var/var.js`, `calculator.html`: the same methods in the browser; a test runs them through Node
   against Python. Five years of returns are embedded as integers (0.001% units).
 - `src/var/data.py`: Yahoo prices for today's NIFTY 50 and two ETFs since 2007, with known errors

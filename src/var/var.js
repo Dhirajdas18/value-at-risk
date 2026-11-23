@@ -91,4 +91,19 @@ function portfolio(returns, holdings) {  // today's holdings under each past day
   return out;
 }
 
-if (typeof module !== "undefined") module.exports = { normInv, historical, moments, normal, cornishFisher, cfValid, horizon, portfolio };
+// Filtered historical simulation with EWMA volatility (mirrors var/fhs.py fhs_today).
+function fhsToday(r, lam = 0.94, window = 500, alpha = 0.99, seed = 30) {
+  let v = r.slice(0, seed).reduce((a, x) => a + x * x, 0) / seed;
+  const z = [];
+  let vol = Math.sqrt(v);
+  for (let t = seed; t < r.length; t++) {
+    vol = Math.sqrt(v);
+    z.push(r[t] / vol);
+    v = lam * v + (1 - lam) * r[t] * r[t];
+  }
+  const next = Math.sqrt(v), recent = z.slice(-window);
+  const [q, tail] = historical(recent, alpha);
+  return [next * q, next * tail];
+}
+
+if (typeof module !== "undefined") module.exports = { normInv, historical, moments, normal, cornishFisher, cfValid, horizon, portfolio, fhsToday };

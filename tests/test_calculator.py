@@ -42,3 +42,11 @@ def test_browser_methods_match_python():
 def test_browser_portfolio_skips_days_with_missing_data():
     js = _node("m.portfolio({A: [0.01, null, -0.02], B: [0.03, 0.0, 0.0]}, {A: 300, B: 100})")
     assert js == pytest.approx([0.75 * 0.01 + 0.25 * 0.03, 0.75 * -0.02])
+
+
+def test_browser_fhs_matches_python():
+    from var.fhs import fhs_today
+
+    r = list(np.random.default_rng(5).standard_t(4, 900) * 0.01)
+    js = _node(f"m.fhsToday({json.dumps(r)}, 0.94, 500, 0.99)")
+    assert js == pytest.approx(fhs_today(pd.Series(r), 0.94, 500, 0.99), rel=1e-9)
