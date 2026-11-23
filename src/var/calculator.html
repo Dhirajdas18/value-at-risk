@@ -15,6 +15,17 @@
   <tbody id="calc-out"></tbody>
 </table></div>
 <p class="note" id="calc-note" aria-live="polite"></p>
+<h3>Where the risk comes from</h3>
+<div class="table-scroll"><table class="data">
+  <thead><tr><th scope="col">Holding</th><th scope="col">Share of the money</th><th scope="col">Share of the expected shortfall</th><th scope="col">₹ of expected shortfall</th></tr></thead>
+  <tbody id="calc-parts"></tbody>
+</table></div>
+<h3>Stress scenarios on these holdings</h3>
+<div class="table-scroll"><table class="data">
+  <thead><tr><th scope="col">Scenario</th><th scope="col">Loss</th><th scope="col">Times the 1-day historical VaR</th><th scope="col">Between the closes of</th></tr></thead>
+  <tbody id="calc-stress"></tbody>
+</table></div>
+<p class="note" id="stress-note"></p>
 <script>
 $js
 const DATA = $data;
@@ -23,6 +34,10 @@ const DATA = $data;
   const returns = Object.fromEntries(Object.entries(DATA.r).map(([k, v]) => [k, v.map((x) => x === null ? null : x * SCALE)]));
   const label = (s) => DATA.labels[s] || s;
   const rows = document.getElementById("rows"), out = document.getElementById("calc-out");
+  const parts = document.getElementById("calc-parts"), stressOut = document.getElementById("calc-stress");
+  const stressNote = document.getElementById("stress-note");
+  const pct = (x) => (x * 100).toFixed(0) + "%";
+  const day = (iso) => new Date(iso + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
   const note = document.getElementById("calc-note");
   const rupees = (x) => Number.isFinite(x) ? "₹" + Math.round(x).toLocaleString("en-IN") : "–";
   const addRow = (sym, amount) => {
@@ -42,12 +57,13 @@ const DATA = $data;
       if (a > 0) holdings[s] = (holdings[s] || 0) + a;
     });
     const total = Object.values(holdings).reduce((a, b) => a + b, 0);
-    if (!total) { out.innerHTML = ""; note.textContent = "Add an amount to see the risk."; return; }
+    const clear = (msg) => { out.innerHTML = parts.innerHTML = stressOut.innerHTML = ""; stressNote.textContent = ""; note.textContent = msg; };
+    if (!total) { clear("Add an amount to see the risk."); return; }
     const win = parseInt(document.getElementById("win").value, 10);
     const alpha = parseFloat(document.getElementById("conf").value);
     const recent = Object.fromEntries(Object.entries(returns).map(([k, v]) => [k, v.slice(-win)]));
     const r = portfolio(recent, holdings);
-    if (r.length < 60) { out.innerHTML = ""; note.textContent = "Not enough shared history for these holdings in this window."; return; }
+    if (r.length < 60) { clear("Not enough shared history for these holdings in this window."); return; }
     const m = moments(r), valid = cfValid(m.skew, m.kurt);
     const res = [["Historical", historical(r, alpha)],
       ["Filtered historical (EWMA)", r.length > 530 ? fhsToday(r, 0.94, Math.min(500, r.length - 30), alpha) : null],
@@ -59,6 +75,20 @@ const DATA = $data;
     const ten = historical(horizon(r, 10), alpha)[0], one = historical(r, alpha)[0];
     note.textContent = `${r.length} trading days of shared history, up to ${DATA.last}. ` +
       `10-day historical VaR: ${rupees(ten * total)}; 1-day × √10 would say ${rupees(one * Math.sqrt(10) * total)}.`;
+    const comp = componentES(recent, holdings, alpha), esTotal = Object.values(comp).reduce((a, b) => a + b, 0);
+    parts.innerHTML = Object.keys(comp).map((k) => `<tr><th scope="row">${label(k)}</th><td>${pct(holdings[k] / total)}</td>` +
+      `<td>${pct(comp[k] / esTotal)}</td><td>${rupees(comp[k])}</td></tr>`).join("");
+    const proxied = new Set();
+    stressOut.innerHTML = DATA.stress.map((sc) => {
+      const pnl = Object.keys(holdings).reduce((a, k) => a + holdings[k] * sc.r[k] * SCALE, 0);
+      const marks = Object.keys(holdings).filter((k) => sc.proxied.includes(k));
+      marks.forEach((k) => proxied.add(`${label(k)} in ${sc.name}`));
+      return `<tr><th scope="row">${sc.name}${marks.length ? "*" : ""}</th>` +
+        `<td>${pnl < 0 ? rupees(-pnl) : "gain of " + rupees(pnl)}</td><td>${pnl < 0 ? (-pnl / (one * total)).toFixed(1) + "×" : "–"}</td>` +
+        `<td>${day(sc.start)} and ${day(sc.end)} (${sc.days} trading day${sc.days > 1 ? "s" : ""})</td></tr>`;
+    }).join("");
+    stressNote.textContent = "Each scenario applies every holding's move between those closes to today's amounts." +
+      (proxied.size ? ` * No prices then for ${[...proxied].join(", ")}: moved by its beta to the NIFTY index (an index ETF moves with the index).` : "");
   };
   document.getElementById("add").addEventListener("click", () => { addRow(DATA.symbols[0], 100000); update(); });
   document.getElementById("calc").addEventListener("input", update);

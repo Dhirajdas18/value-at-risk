@@ -106,4 +106,21 @@ function fhsToday(r, lam = 0.94, window = 500, alpha = 0.99, seed = 30) {
   return [next * q, next * tail];
 }
 
-if (typeof module !== "undefined") module.exports = { normInv, historical, moments, normal, cornishFisher, cfValid, horizon, portfolio, fhsToday };
+// Each holding's ₹ share of historical expected shortfall: its average loss on the portfolio's
+// tail days (mirrors var/decomp.py component_es). The shares add up to the portfolio's ES.
+function componentES(returns, holdings, alpha) {
+  const names = Object.keys(holdings).filter((k) => holdings[k] > 0);
+  const total = names.reduce((a, k) => a + holdings[k], 0);
+  const rows = [];
+  for (let i = 0; i < returns[names[0]].length; i++) {
+    const x = names.map((k) => returns[k][i]);
+    if (x.every((v) => v !== null && v !== undefined)) rows.push(x);
+  }
+  const p = rows.map((x) => x.reduce((a, v, j) => a + v * holdings[names[j]] / total, 0));
+  const q = quantile([...p].sort((a, b) => a - b), 1 - alpha);
+  const tail = rows.filter((_, i) => p[i] <= q);
+  return Object.fromEntries(names.map((k, j) =>
+    [k, -tail.reduce((a, x) => a + x[j], 0) / tail.length * holdings[k]]));
+}
+
+if (typeof module !== "undefined") module.exports = { normInv, historical, moments, normal, cornishFisher, cfValid, horizon, portfolio, fhsToday, componentES };

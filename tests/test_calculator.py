@@ -50,3 +50,15 @@ def test_browser_fhs_matches_python():
     r = list(np.random.default_rng(5).standard_t(4, 900) * 0.01)
     js = _node(f"m.fhsToday({json.dumps(r)}, 0.94, 500, 0.99)")
     assert js == pytest.approx(fhs_today(pd.Series(r), 0.94, 500, 0.99), rel=1e-9)
+
+
+def test_browser_component_es_matches_python():
+    from var.decomp import component_es
+
+    rng = np.random.default_rng(7)
+    R = pd.DataFrame(rng.standard_t(4, (800, 3)) * 0.01, columns=["A", "B", "C"])
+    R.iloc[:50, 2] = np.nan
+    h = {"A": 500_000.0, "B": 300_000.0, "C": 200_000.0}
+    cols = {k: [None if np.isnan(x) else x for x in R[k]] for k in R}
+    js = _node(f"m.componentES({json.dumps(cols)}, {json.dumps(h)}, 0.975)")
+    assert js == pytest.approx(component_es(R, h, 0.975).to_dict(), rel=1e-9)

@@ -20,7 +20,7 @@ you enter leaves the page.
 - [x] Filtered historical simulation (EWMA / GARCH), also in the calculator
 - [x] Expected shortfall at 97.5% and its backtest (Acerbi-Székely)
 - [x] Extreme value theory (peaks over threshold) for 99.9%
-- [ ] Marginal and component VaR; historical stress scenarios
+- [x] Risk by holding (component and marginal expected shortfall); historical stress scenarios, also in the calculator
 - [ ] Options: delta-gamma vs full revaluation
 
 ## Findings
@@ -193,12 +193,52 @@ shape ξ measures how fat the tail is: 0 is a thin, normal-like tail; above 0 th
   p = 0.25); the normal curve 9 times (p < 0.01). Extreme value theory didn't beat plain history at 99.9%;
   its value is a smooth tail that rests on many days and extends beyond the worst day seen.
 
+### 6. The COVID crash cost 12 times the NIFTY ETF's 99% one-day VaR in 21 trading days; gold carried 14% of a 70/30 portfolio's risk over 18 years and 67% in the last one
+
+<a href="docs/img/stress_scenarios.png"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/img/stress_scenarios.png"><img src="docs/img/stress_scenarios.gif" alt="Loss on 10 lakh rupees held today in four historical episodes, for three portfolios, against the NIFTY ETF's 99% one-day VaR" width="720"></picture></a>
+
+A stress test replays a dated episode on today's holdings: each holding's move between two closes, applied to
+today's rupee amounts. VaR says how bad a normal bad day is; a stress test says what a named disaster would
+cost. Losses on ₹10 lakh, and as a multiple of each portfolio's 99% one-day historical VaR (2009–2026):
+
+| Episode (trading days) | NIFTY ETF | 5 large stocks | 70% NIFTY / 30% gold |
+|---|---|---|---|
+| 2008 crash, 8 Jan to 27 Oct (198) | ₹5,98,559 (21×)* | ₹4,32,022 (15×) | ₹4,11,998 (21×)* |
+| Demonetisation, 8 Nov to 26 Dec 2016 (33) | ₹83,730 (2.9×) | ₹26,931 (0.9×) | ₹87,936 (4.5×) |
+| COVID crash, 19 Feb to 23 Mar 2020 (21) | ₹3,50,494 (12×) | ₹3,22,692 (11×) | ₹2,59,157 (13×) |
+| 2024 election result, 4 Jun (1) | ₹29,674 (1.0×) | ₹30,869 (1.1×) | ₹20,920 (1.1×) |
+
+\* Neither ETF has prices on Yahoo before 2009. The NIFTY ETF is replaced by the NIFTY index it tracks
+(−59.9%); gold is moved by its beta to NIFTY (−0.04), which puts it at +2.3%. That is a guess, not history.
+
+- **Gold didn't cushion demonetisation:** the gold ETF fell 9.8% and the NIFTY ETF 8.4%, so the 70/30 mix
+  lost more than NIFTY alone.
+- **Election day, ETF against index:** NIFTY fell 5.9% on 4 June 2024 but the ETF's traded price fell 3.0%,
+  and it rose 0.3% the next day against the index's 3.4%. The stress uses the price you could have sold at.
+
+<table><tr>
+<td><a href="docs/img/decomp_shares.png"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/img/decomp_shares.png"><img src="docs/img/decomp_shares.gif" alt="Each holding's share of the money and of the 97.5% expected shortfall in two portfolios"></picture></a></td>
+<td><a href="docs/img/decomp_incremental.png"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/img/decomp_incremental.png"><img src="docs/img/decomp_incremental.gif" alt="Change in expected shortfall from adding up to 10 lakh rupees of NIFTY or gold, recomputed against the marginal estimate"></picture></a></td>
+</tr></table>
+
+- **Risk by holding (left):** each holding's component expected shortfall is its average loss on the
+  portfolio's worst 2.5% of days; the components add up exactly to the portfolio's 97.5% ES. In the 5-stock
+  portfolio, equal money gave INFY 25% of the risk and ITC 16%. In the 70/30 mix, gold was 30% of the money
+  and 14% of the risk (the normal-curve VaR split says 13%).
+- **The split depends on the window:** gold's share of the 70/30 risk was 14% over 2009–2026, 30% over the
+  last 5 years, 47% over the last 3 and 67% over the last year. Over that year gold's daily volatility was
+  2.0% against NIFTY's 0.86%, and it fell 10.5% on 30 January 2026 and 9.5% on 2 February.
+- **Marginal against recomputed (right):** each extra rupee of NIFTY added 2.77 paise of ES and each rupee of
+  gold 1.06 paise. That slope matched a full recomputation for ₹10,000 trades. For ₹1 lakh it was 2% short for
+  NIFTY and 12% short for gold; for ₹10 lakh, 6% and 46% short. The marginal is the slope at today's mix, and
+  the recomputed curve for gold bends upward.
+
 ## Quick start
 
 ```bash
 uv sync
 uv run python scripts/fetch_data.py         # Yahoo Finance -> data/prices.parquet
-uv run var report methods                   # also: backtest, fhs, es, evt; charts -> out/
+uv run var report methods                   # also: backtest, fhs, es, evt, decomp; charts -> out/
 uv run python scripts/build_site.py         # dashboard and calculator -> site/index.html
 uv run pytest
 ```
@@ -211,6 +251,8 @@ uv run pytest
 - `src/var/fhs.py`: EWMA and GARCH(1,1) volatility forecasts and filtered historical simulation.
 - `src/var/es.py`: expected-shortfall forecasts and the Acerbi-Székely backtest with simulated p-values.
 - `src/var/evt.py`: peaks-over-threshold fit (generalised Pareto), VaR, ES and exceedance probabilities.
+- `src/var/decomp.py`: component and marginal risk by holding, incremental ES of a trade, and historical
+  stress scenarios with beta proxies for holdings that had no prices then.
 - `src/var/var.js`, `calculator.html`: the same methods in the browser; a test runs them through Node
   against Python. Five years of returns are embedded as integers (0.001% units).
 - `src/var/data.py`: Yahoo prices for today's NIFTY 50 and two ETFs since 2007, with known errors

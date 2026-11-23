@@ -561,3 +561,103 @@ def report_evt(out_dir: Path) -> dict:
 
 REPORTS = {"methods": report_methods, "backtest": report_backtest, "fhs": report_fhs,
            "es": report_es, "evt": report_evt}
+
+
+def report_decomp(out_dir: Path) -> dict:
+    """Which holdings carry the risk, what a trade adds, and history's worst episodes replayed."""
+    from var.decomp import SCENARIOS, component_es, component_var_normal, incremental_es, stress
+
+    R = returns()
+    Rs = R[R.index >= START]
+    books = {n: {k: v * CAPITAL for k, v in w.items()} for n, w in PORTFOLIOS.items()}
+    shares = {}
+    for name in ("5 large stocks", "70% NIFTY / 30% gold"):
+        h = books[name]
+        c, cv = component_es(Rs, h), component_var_normal(Rs, h)["component"]
+        shares[name] = pd.DataFrame({"money": pd.Series(h) / CAPITAL, "ES": c / c.sum(),
+                                     "normal VaR": cv / cv.sum()})
+
+    fig, ax = plt.subplots(figsize=(9, 4.8))
+    rows = [(n, s) for n, d in shares.items() for s in d.index]
+    y = np.arange(len(rows))[::-1].astype(float)
+    y[: len(shares["5 large stocks"])] += 0.6  # gap between the two portfolios
+    money = [shares[n].loc[s, "money"] * 100 for n, s in rows]
+    risk = [shares[n].loc[s, "ES"] * 100 for n, s in rows]
+    ax.barh(y + 0.2, money, 0.38, color=plots.MUTED, label="share of the money")
+    ax.barh(y - 0.2, risk, 0.38, color=plots.SERIES[0], label="share of 97.5% expected shortfall")
+    for yi, m, r_ in zip(y, money, risk, strict=True):
+        ax.text(max(m, r_) + 1, yi, f"{r_:.0f}%", va="center", fontsize=8, color=plots.TEXT_2)
+    ax.set_yticks(y, [f"{s}  ({'5 stocks' if n.startswith('5') else '70/30'})" for n, s in rows])
+    ax.set_xlabel("% of the ₹10 lakh portfolio")
+    ax.grid(axis="y", visible=False)
+    ax.legend(loc="lower right", fontsize=8)
+    g = shares["70% NIFTY / 30% gold"].loc["GOLDBEES"]
+    ax.set_title(f"Gold is {g['money']:.0%} of the money but {g['ES']:.0%} of the risk")
+    plots.save(fig, out_dir, "decomp_shares")
+
+    h = books["70% NIFTY / 30% gold"]
+    c = component_es(Rs, h)
+    marginal = c / pd.Series(h)
+    sizes = np.linspace(0, 1_000_000, 21)
+    inc = {s: [incremental_es(Rs, h, s, a) if a else 0.0 for a in sizes]
+           for s in ("NIFTYBEES", "GOLDBEES")}
+    fig, ax = plt.subplots(figsize=(9, 4.6))
+    for s, color, label in (("NIFTYBEES", plots.SERIES[0], "NIFTY ETF"),
+                            ("GOLDBEES", plots.SERIES[1], "gold ETF")):
+        ax.plot(sizes / 1e5, np.array(inc[s]) / 1e3, color=color, lw=2,
+                label=f"buy more {label}: recomputed")
+        ax.plot(sizes / 1e5, marginal[s] * sizes / 1e3, color=color, lw=1.2, ls="--",
+                label=f"buy more {label}: marginal × amount")
+    ax.set_xlabel("₹ lakh added to the 70/30 portfolio")
+    ax.set_ylabel("change in 97.5% expected shortfall, ₹ thousand")
+    ax.legend(loc="upper left", fontsize=8)
+    gold_gap = 1 - marginal["GOLDBEES"] * sizes[-1] / inc["GOLDBEES"][-1]
+    ax.set_title(f"The marginal estimate holds for small trades; for ₹10 lakh of gold it is "
+                 f"{gold_gap:.0%} short")
+    plots.save(fig, out_dir, "decomp_incremental")
+
+    var99 = {n: historical(portfolio_returns(Rs[list(b)].dropna(), b), 0.99)[0] * CAPITAL
+             for n, b in books.items()}
+    st = {n: {sc: stress(R, b, *SCENARIOS[sc]) for sc in SCENARIOS} for n, b in books.items()}
+    fig, ax = plt.subplots(figsize=(9, 4.8))
+    xs = np.arange(len(SCENARIOS))
+    for j, (n, color) in enumerate(zip(books, (plots.SERIES[0], plots.SERIES[2],
+                                                plots.SERIES[1]), strict=True)):
+        loss = [-st[n][sc]["pnl"].sum() / 1e3 for sc in SCENARIOS]
+        ax.bar(xs - 0.27 + 0.27 * j, loss, 0.25, color=color, label=n)
+        for i, v in enumerate(loss):
+            ax.text(i - 0.27 + 0.27 * j, v + 6, f"{v:.0f}", ha="center", fontsize=7)
+    ax.axhline(var99["NIFTY ETF"] / 1e3, color=plots.TEXT_2, ls="--", lw=1,
+               label=f"NIFTY ETF's 99% one-day VaR: ₹{var99['NIFTY ETF'] / 1e3:.0f}k")
+    days = {sc: int(((R.index > a) & (R.index <= b)).sum()) for sc, (a, b) in SCENARIOS.items()}
+    ax.set_xticks(xs, [f"{sc}\n{days[sc]} trading day{'s' if days[sc] > 1 else ''}"
+                       + ("\nETFs proxied" if sc == "2008 crash" else "") for sc in SCENARIOS])
+    ax.set_ylabel("loss on ₹10 lakh held today, ₹ thousand")
+    ax.grid(axis="x", visible=False)
+    ax.legend(loc="upper right", fontsize=8)
+    covid = -st["NIFTY ETF"]["COVID crash"]["pnl"].sum() / var99["NIFTY ETF"]
+    ax.set_title(f"The COVID crash cost the NIFTY ETF {covid:.0f}× its 99% one-day VaR "
+                 f"in {days['COVID crash']} trading days")
+    plots.save(fig, out_dir, "stress_scenarios")
+
+    return {
+        "shares (money, ES97.5, normal VaR99)": {
+            n: {s: tuple(f"{x:.1%}" for x in row) for s, row in d.iterrows()}
+            for n, d in shares.items()},
+        "70/30 ES97.5 ₹": round(c.sum()),
+        "marginal ES per ₹ (70/30)": marginal.round(4).to_dict(),
+        "incremental ES ₹ (recomputed, marginal) at 0.1/1/3/10 lakh": {
+            s: [(round(inc[s][i]), round(marginal[s] * sizes[i])) for i in (0, 2, 6, 20)]
+            for s in inc},
+        "99% one-day VaR ₹": {n: round(v) for n, v in var99.items()},
+        "stress ₹ (loss, × VaR99)": {
+            n: {sc: (round(-d["pnl"].sum()), round(-d["pnl"].sum() / var99[n], 1))
+                for sc, d in st[n].items()} for n in books},
+        "stress returns by holding": {
+            n: {sc: {s: (f"{r_['return']:.1%}", r_["source"]) for s, r_ in d.iterrows()}
+                for sc, d in st[n].items()} for n in books},
+        "scenario days": days,
+    }
+
+
+REPORTS["decomp"] = report_decomp

@@ -71,7 +71,21 @@ def calculator_data(r: pd.DataFrame) -> dict:
     data = {s: [None if pd.isna(x) else int(round(x / SCALE)) for x in recent[s]]
             for s in symbols}
     return {"symbols": symbols, "labels": LABELS, "last": f"{recent.index[-1]:%d %b %Y}",
-            "r": data}
+            "r": data, "stress": stress_data(r, symbols)}
+
+
+def stress_data(r: pd.DataFrame, symbols: list[str]) -> list[dict]:
+    """Each scenario's return for every symbol (proxied by NIFTY beta where it had no prices)."""
+    from var.decomp import SCENARIOS, stress
+
+    out = []
+    for name, (start, end) in SCENARIOS.items():
+        s = stress(r, dict.fromkeys(symbols, 1.0), start, end)
+        out.append({"name": name, "start": start, "end": end,
+                    "days": int(((r.index > start) & (r.index <= end)).sum()),
+                    "r": {k: int(round(s.loc[k, "return"] / SCALE)) for k in symbols},
+                    "proxied": [k for k in symbols if s.loc[k, "source"] != "history"]})
+    return out
 
 
 def calculator_section(r: pd.DataFrame) -> str:
@@ -125,7 +139,9 @@ SECTIONS = [
      "exceeded on only 1% of days is the 99% VaR, and the average loss on those days the expected "
      "shortfall. Filtered historical rescales those days to today's volatility (the method that "
      "passed the backtests below); the normal method assumes a bell curve; Cornish-Fisher corrects "
-     "it for skew and fat tails when they aren't too extreme.",
+     "it for skew and fat tails when they aren't too extreme. Below the totals: how much of the "
+     "expected shortfall each holding carries, and what four of history's worst episodes would "
+     "cost these holdings today.",
      calculator_section),
     ("Methods compared",
      "Three ₹10 lakh portfolios, daily returns since January 2009. A normal curve puts the 99% "
