@@ -18,7 +18,7 @@ you enter leaves the page.
 - [x] In-browser calculator, tested against the Python implementation through Node
 - [x] Backtesting: Kupiec, Christoffersen, Basel traffic light
 - [x] Filtered historical simulation (EWMA / GARCH), also in the calculator
-- [ ] Expected shortfall at 97.5% and its backtest
+- [x] Expected shortfall at 97.5% and its backtest (Acerbi-Székely)
 - [ ] Extreme value theory for 99.9%
 - [ ] Marginal and component VaR; historical stress scenarios
 - [ ] Options: delta-gamma vs full revaluation
@@ -125,12 +125,46 @@ refitted monthly on the previous 500 days; shocks from the previous 500 days. Sa
   kept pace, the 1000-day one again and again.
 - **Basel (right):** filtered historical VaR peaked at 8 breaches in 250 days (yellow) and never went red.
 
+### 4. Basel's 97.5% expected shortfall asked for about the same capital as 99% VaR, and its backtest caught the methods that understate tail losses
+
+<a href="docs/img/es_backtest.png"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/img/es_backtest.png"><img src="docs/img/es_backtest.gif" alt="Acerbi-Székely Z2 statistic by method for the NIFTY ETF and five stocks, with p-values" width="720"></picture></a>
+
+Basel's market-risk rules (FRTB) replaced 99% VaR with 97.5% expected shortfall: the average loss on the
+worst 2.5% of days. For a bell curve the two are almost equal (2.338 against 2.326 standard deviations); ES
+also responds to how bad the tail is. Same days and methods as sections 2–3 (filtered historical with 500
+days of shocks). The backtest is Acerbi and Székely's Z2: the average of each day's return on breach days
+divided by its forecast ES, which is 0 for a correct ES and negative when ES is too small; its p-value comes
+from 1,000 simulations drawn from each day's own forecast distribution.
+
+| 97.5% ES, 2013–2026 | NIFTY ETF: ES vs 99% VaR | Z2 (p) | 5 large stocks: Z2 (p) |
+|---|---|---|---|
+| Historical, 250 days | 2.40% vs 2.35% | −0.42 (p < 0.01) | −0.32 (p = 0.06) |
+| Historical, 1000 days | 2.77% vs 2.51% | +0.05 (p = 0.66) | +0.00 (p = 0.47) |
+| Normal, 250 days | 2.03% vs 2.02% | −0.61 (p < 0.01) | −0.50 (p < 0.01) |
+| Filtered historical, EWMA | 2.37% vs 2.34% | −0.13 (p = 0.21) | −0.10 (p = 0.30) |
+
+- **Same capital, better question:** ES at 97.5% averaged within 3% of 99% VaR for every method except the
+  1000-day window (10% higher).
+- **The backtest rejected the bell curve on both portfolios** and one-year history on the NIFTY ETF;
+  filtered historical and the 1000-day window passed.
+- **Z2 doesn't test timing:** the 1000-day window passed here, although its breaches clustered in section 2.
+  An ES backtest checks the size of tail losses, not whether they bunch.
+
+<table><tr>
+<td><a href="docs/img/es_capital.png"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/img/es_capital.png"><img src="docs/img/es_capital.gif" alt="Average 99% VaR and 97.5% expected shortfall by method for the NIFTY ETF"></picture></a></td>
+<td><a href="docs/img/es_by_year.png"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/img/es_by_year.png"><img src="docs/img/es_by_year.gif" alt="Actual loss minus forecast expected shortfall on breach days, by year, for one-year historical and filtered historical"></picture></a></td>
+</tr></table>
+
+- **Where the shortfall fell short (right):** on days the 97.5% VaR was breached, losses exceeded the
+  one-year historical ES forecast by 1.3 points on average in 2020; filtered historical's gap that year was
+  0.5 points.
+
 ## Quick start
 
 ```bash
 uv sync
 uv run python scripts/fetch_data.py         # Yahoo Finance -> data/prices.parquet
-uv run var report methods                   # also: backtest, fhs; charts -> out/
+uv run var report methods                   # also: backtest, fhs, es; charts -> out/
 uv run python scripts/build_site.py         # dashboard and calculator -> site/index.html
 uv run pytest
 ```
@@ -141,6 +175,7 @@ uv run pytest
   ES; portfolio returns from rupee holdings; overlapping multi-day returns.
 - `src/var/backtest.py`: rolling VaR forecasts, Kupiec and Christoffersen tests, Basel traffic light.
 - `src/var/fhs.py`: EWMA and GARCH(1,1) volatility forecasts and filtered historical simulation.
+- `src/var/es.py`: expected-shortfall forecasts and the Acerbi-Székely backtest with simulated p-values.
 - `src/var/var.js`, `calculator.html`: the same methods in the browser; a test runs them through Node
   against Python. Five years of returns are embedded as integers (0.001% units).
 - `src/var/data.py`: Yahoo prices for today's NIFTY 50 and two ETFs since 2007, with known errors

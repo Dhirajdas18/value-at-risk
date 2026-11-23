@@ -346,4 +346,100 @@ def report_fhs(out_dir: Path) -> dict:
     return out
 
 
-REPORTS = {"methods": report_methods, "backtest": report_backtest, "fhs": report_fhs}
+ES_METHODS = {"historical, 250 days": ("historical", 250),
+              "historical, 1000 days": ("historical", 1000),
+              "normal, 250 days": ("normal", 250),
+              "filtered historical, EWMA": ("filtered", 500)}
+
+
+def report_es(out_dir: Path) -> dict:
+    """97.5% expected shortfall (Basel's measure) vs 99% VaR, and the Acerbi-Szekely backtest."""
+    from var.es import es_forecasts, z2_pvalue
+
+    R = returns()
+    R = R[R.index >= START]
+    rng = np.random.default_rng(0)
+    res = {}
+    for name in ("NIFTY ETF", "5 large stocks"):
+        h = PORTFOLIOS[name]
+        p = portfolio_returns(R[list(h)].dropna(), h)
+        es = {k: es_forecasts(p, m, w, 0.975) for k, (m, w) in ES_METHODS.items()}
+        v99 = {k: es_forecasts(p, m, w, 0.99) for k, (m, w) in ES_METHODS.items()}
+        start = max(f.index[0] for f in es.values())
+        rows = {}
+        for k, f in es.items():
+            keep = f.index >= start
+            ff = f[keep]
+            x = p.reindex(ff.index).to_numpy()
+            z, pv = z2_pvalue(x, ff["var"].to_numpy(), ff["es"].to_numpy(), 0.975,
+                              lambda n, f=f, keep=keep: f.attrs["draw"](rng, n)[:, keep], 1000)
+            hit = x < -ff["var"].to_numpy()
+            rows[k] = {"es": ff["es"], "var975": ff["var"], "x": pd.Series(x, ff.index),
+                       "es_mean": float(ff["es"].mean()),
+                       "var99_mean": float(v99[k].loc[v99[k].index >= start, "var"].mean()),
+                       "z2": z, "p": pv, "breach": float(hit.mean())}
+        res[name] = rows
+    names = list(ES_METHODS)
+    nifty = res["NIFTY ETF"]
+
+    fig, ax = plt.subplots(figsize=(9, 4.6))
+    xs = np.arange(len(names))
+    a = [nifty[k]["var99_mean"] * 100 for k in names]
+    b = [nifty[k]["es_mean"] * 100 for k in names]
+    ax.bar(xs - 0.2, a, 0.38, color=plots.MUTED, label="99% VaR (the old rule)")
+    ax.bar(xs + 0.2, b, 0.38, color=plots.SERIES[0], label="97.5% expected shortfall (Basel now)")
+    for i in range(len(names)):
+        ax.text(i - 0.2, a[i] + 0.03, f"{a[i]:.2f}", ha="center", fontsize=8)
+        ax.text(i + 0.2, b[i] + 0.03, f"{b[i]:.2f}", ha="center", fontsize=8)
+    ax.set_xticks(xs, [n.replace(", ", "\n") for n in names], fontsize=9)
+    ax.set_ylabel("average over 2013–2026, % of the NIFTY ETF")
+    ax.grid(axis="x", visible=False)
+    ax.legend(loc="upper left", fontsize=9)
+    ax.set_title("Switching to 97.5% shortfall barely changed the capital number")
+    plots.save(fig, out_dir, "es_capital")
+
+    fig, ax = plt.subplots(figsize=(9, 4.6))
+    for j, (port, color) in enumerate((("NIFTY ETF", plots.SERIES[0]),
+                                       ("5 large stocks", plots.SERIES[2]))):
+        zs = [res[port][k]["z2"] for k in names]
+        ax.bar(xs - 0.2 + 0.4 * j, zs, 0.38, color=color, label=port)
+        for i, k in enumerate(names):
+            pv = res[port][k]["p"]
+            ax.text(i - 0.2 + 0.4 * j, zs[i] + (0.02 if zs[i] >= 0 else -0.05),
+                    "p<0.01" if pv < 0.01 else f"p={pv:.2f}", ha="center", fontsize=8,
+                    color=plots.TEXT_2)
+    ax.axhline(0, color=plots.TEXT, lw=1)
+    ax.set_xticks(xs, [n.replace(", ", "\n") for n in names], fontsize=9)
+    ax.set_ylabel("Acerbi-Székely Z2 (0 = right; below = ES too small)")
+    ax.grid(axis="x", visible=False)
+    ax.legend(loc="lower left", fontsize=9)
+    ax.set_title("Shortfall backtest: normal fails on both; one-year history fails on NIFTY")
+    plots.save(fig, out_dir, "es_backtest")
+
+    fig, ax = plt.subplots(figsize=(9, 4.6))
+    years = sorted(set(nifty[names[0]]["x"].index.year))
+    xs = np.arange(len(years))
+    for j, (k, color) in enumerate((("historical, 250 days", plots.SERIES[1]),
+                                    ("filtered historical, EWMA", plots.SERIES[0]))):
+        d = nifty[k]
+        hit = d["x"] < -d["var975"]
+        actual = (-d["x"][hit]).groupby(hit[hit].index.year).mean()
+        forecast = d["es"][hit].groupby(hit[hit].index.year).mean()
+        gap = ((actual - forecast) * 100).reindex(years)
+        ax.bar(xs - 0.2 + 0.4 * j, gap, 0.38, color=color, label=k)
+    ax.axhline(0, color=plots.TEXT, lw=1)
+    ax.set_xticks(xs, years, fontsize=8)
+    ax.set_ylabel("actual loss minus forecast ES on breach days, pts")
+    ax.grid(axis="x", visible=False)
+    ax.legend(loc="upper left", fontsize=9)
+    ax.set_title("When breached, losses beat the one-year forecast most in 2020")
+    plots.save(fig, out_dir, "es_by_year")
+
+    return {port: {k: (f"ES97.5 {v['es_mean']:.2%}", f"VaR99 {v['var99_mean']:.2%}",
+                       f"ratio {v['es_mean'] / v['var99_mean']:.2f}",
+                       f"breach97.5 {v['breach']:.2%}", f"Z2 {v['z2']:.3f}", f"p {v['p']:.3f}")
+                   for k, v in rows.items()} for port, rows in res.items()}
+
+
+REPORTS = {"methods": report_methods, "backtest": report_backtest, "fhs": report_fhs,
+           "es": report_es}
