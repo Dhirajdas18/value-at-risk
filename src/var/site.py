@@ -96,6 +96,28 @@ def methods_figure(r: pd.DataFrame) -> go.Figure:
     return _scatter_layout(fig, "", "99% one-day VaR on ₹10 lakh, ₹")
 
 
+def traffic_figure(r: pd.DataFrame) -> go.Figure:
+    """Breaches of rolling 99% VaR in the last 250 days for the NIFTY ETF, with Basel zones."""
+    from var.reports import START, backtest_table
+
+    p = r.loc[r.index >= START, "NIFTYBEES"].dropna()
+    res = backtest_table(p, {"historical, 250 days": ("historical", 250),
+                             "historical, 1000 days": ("historical", 1000)})
+    fig = go.Figure()
+    for k, c in (("historical, 250 days", plots.SERIES[0]),
+                 ("historical, 1000 days", plots.SERIES[1])):
+        roll = res[k]["roll"]
+        fig.add_scatter(x=list(roll.index.strftime("%Y-%m-%d")), y=roll.astype(int).tolist(),
+                        name=k, mode="lines", line=dict(color=c, width=2, shape="hv"),
+                        hovertemplate=f"{k}: %{{y}} breaches in 250 days<extra></extra>")
+    for lo, hi, color in ((-0.5, 4.5, plots.SERIES[2]), (4.5, 9.5, plots.SERIES[3]),
+                          (9.5, 20, plots.SERIES[7])):
+        fig.add_hrect(y0=lo, y1=hi, fillcolor=color, opacity=0.08, line_width=0)
+    fig = _layout(fig, "breaches of 99% VaR in the last 250 days")
+    fig.update_xaxes(range=None, autorange=True)
+    return fig
+
+
 SECTIONS = [
     ("VaR calculator",
      "Enter rupee amounts in any of today's NIFTY 50 stocks or the NIFTY and gold ETFs. The page "
@@ -109,6 +131,12 @@ SECTIONS = [
      "loss lower than history does; Monte Carlo with fat-tailed (Student-t) draws comes close to "
      "history.",
      methods_figure),
+    ("Backtesting",
+     "Each day's 99% VaR forecast from past data only, for the NIFTY ETF, counted against what "
+     "happened. Basel's traffic light: up to 4 breaches in 250 days is green, 5 to 9 yellow, 10 or "
+     "more red. The 1000-day VaR breached about as often as promised overall, but its breaches "
+     "came in bunches and it went deepest into the red in 2020.",
+     traffic_figure),
 ]
 
 

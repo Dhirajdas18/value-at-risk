@@ -16,7 +16,7 @@ you enter leaves the page.
 
 - [x] Historical, normal, Cornish-Fisher and Monte Carlo (normal, Student-t) VaR and expected shortfall; 10-day horizons
 - [x] In-browser calculator, tested against the Python implementation through Node
-- [ ] Backtesting: Kupiec, Christoffersen, Basel traffic light
+- [x] Backtesting: Kupiec, Christoffersen, Basel traffic light
 - [ ] Filtered historical simulation (EWMA / GARCH)
 - [ ] Expected shortfall at 97.5% and its backtest
 - [ ] Extreme value theory for 99.9%
@@ -60,12 +60,44 @@ shortfall (ES) is the average loss on those days.
   99% (9.0% vs 7.7%) and 99.5% (11.1% vs 9.2%). Ten-day returns have thinner tails than daily ones: excess
   kurtosis 17.8 for daily returns against 8.4 for non-overlapping ten-day returns.
 
+### 2. Only a slow VaR breached as often as promised, and its breaches came in bunches
+
+<a href="docs/img/backtest_breaches.png"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/img/backtest_breaches.png"><img src="docs/img/backtest_breaches.gif" alt="NIFTY ETF daily returns with rolling 99% VaR from 250 and 1000 days of history, and breaches" width="720"></picture></a>
+
+Each day from January 2013 to November 2026 (3,413 days), a 99% VaR forecast from past data only, compared
+with that day's return. A good VaR is breached on about 1% of days (Kupiec's test) and its breaches arrive at
+random, not in clusters (Christoffersen's test: is a breach more likely the day after a breach?).
+
+| NIFTY ETF, 99% | Breaches | Right count? (Kupiec p) | Breach the day after a breach | Days in Basel red |
+|---|---|---|---|---|
+| Historical, 250 days | 1.70% | no (p < 0.01) | 5.2% | 6% |
+| Historical, 1000 days | **1.08%** | **yes (p = 0.63)** | **18.9%** (p < 0.01) | 8% |
+| Normal, 250 days | 2.08% | no (p < 0.01) | 9.9% | 12% |
+| Student-t, 250 days | 1.67% | no (p < 0.01) | 8.8% | 7% |
+
+- **Every one-year method breached too often:** a single year of calm data sets the bar too low for the
+  next shock; the normal curve worst of all (2.1% of days).
+- **The 1000-day VaR got the count right but not the timing:** after a breach, another followed the next day
+  18.9% of the time instead of 1%. A four-year window barely moves when volatility jumps, so in March 2020 it
+  was breached again and again.
+
+<table><tr>
+<td><a href="docs/img/backtest_rates.png"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/img/backtest_rates.png"><img src="docs/img/backtest_rates.gif" alt="Share of days the 99% VaR was breached by method, NIFTY ETF and five stocks, with Kupiec p-values"></picture></a></td>
+<td><a href="docs/img/backtest_traffic.png"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/img/backtest_traffic.png"><img src="docs/img/backtest_traffic.gif" alt="Breaches of 99% VaR in the last 250 days over time against the Basel green, yellow and red zones"></picture></a></td>
+</tr></table>
+
+- **Five stocks behaved better (left):** the same methods on the five-stock portfolio breached less often
+  (1.03% to 1.85%) and no method's breaches clustered significantly.
+- **The Basel traffic light (right):** both historical VaRs reached the red zone (10 or more breaches in 250
+  days) in 2020; the 1000-day VaR went deeper, to 16 breaches against 11, and stayed red from March 2020 to
+  March 2021.
+
 ## Quick start
 
 ```bash
 uv sync
 uv run python scripts/fetch_data.py         # Yahoo Finance -> data/prices.parquet
-uv run var report methods                   # charts -> out/
+uv run var report methods                   # also: backtest; charts -> out/
 uv run python scripts/build_site.py         # dashboard and calculator -> site/index.html
 uv run pytest
 ```
@@ -74,6 +106,7 @@ uv run pytest
 
 - `src/var/var.py`: historical, normal, Cornish-Fisher (with a validity check) and Monte Carlo VaR and
   ES; portfolio returns from rupee holdings; overlapping multi-day returns.
+- `src/var/backtest.py`: rolling VaR forecasts, Kupiec and Christoffersen tests, Basel traffic light.
 - `src/var/var.js`, `calculator.html`: the same methods in the browser; a test runs them through Node
   against Python. Five years of returns are embedded as integers (0.001% units).
 - `src/var/data.py`: Yahoo prices for today's NIFTY 50 and two ETFs since 2007, with known errors

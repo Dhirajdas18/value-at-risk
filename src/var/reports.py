@@ -135,4 +135,110 @@ def report_methods(out_dir: Path) -> dict:
     return out
 
 
-REPORTS = {"methods": report_methods}
+BACKTEST_METHODS = {"historical, 250 days": ("historical", 250),
+                    "historical, 1000 days": ("historical", 1000),
+                    "normal, 250 days": ("normal", 250),
+                    "Student-t, 250 days": ("student-t", 250)}
+
+
+def backtest_table(p: pd.Series, methods: dict = BACKTEST_METHODS, alpha: float = 0.99):
+    """Rolling forecasts for each method, scored on the same days (from the first day the
+    longest window allows). Returns {method: dict of results} and the forecasts."""
+    from var.backtest import christoffersen, kupiec, rolling_var
+
+    fc = {k: rolling_var(p, m, w, alpha) for k, (m, w) in methods.items()}
+    start = max(f.index[0] for f in fc.values())
+    out = {}
+    for k, f in fc.items():
+        f = f[f.index >= start]
+        hit = p.reindex(f.index) < -f
+        n, x = len(hit), int(hit.sum())
+        roll = hit.rolling(250).sum().dropna()
+        out[k] = {"var": f, "hits": hit, "n": n, "x": x, "rate": x / n,
+                  "kupiec": kupiec(x, n, 1 - alpha), "indep": christoffersen(hit.to_numpy()),
+                  "after": float(hit[hit.shift(1, fill_value=False)].mean()),
+                  "roll": roll, "red": float((roll >= 10).mean()),
+                  "yellow": float(((roll >= 5) & (roll < 10)).mean())}
+    return out
+
+
+def report_backtest(out_dir: Path) -> dict:
+    """Rolling 99% VaR on the NIFTY ETF and five stocks since 2013: count, clustering, Basel."""
+    R = returns()
+    R = R[R.index >= START]
+    results = {name: backtest_table(portfolio_returns(R[list(h)].dropna(), h), BACKTEST_METHODS)
+               for name, h in PORTFOLIOS.items() if name != "70% NIFTY / 30% gold"}
+    nifty = results["NIFTY ETF"]
+    p = R["NIFTYBEES"].dropna()
+
+    fig, ax = plt.subplots(figsize=(9, 4.6))
+    idx = nifty["historical, 250 days"]["var"].index
+    ax.plot(idx, p.reindex(idx) * 100, color=plots.MUTED, lw=0.6, label="daily return")
+    for k, c in (("historical, 250 days", plots.SERIES[0]),
+                 ("historical, 1000 days", plots.SERIES[1])):
+        ax.plot(idx, -nifty[k]["var"] * 100, color=c, lw=1.4, label=f"99% VaR, {k}")
+    hits = nifty["historical, 1000 days"]["hits"]
+    ax.plot(hits[hits].index, p.reindex(hits[hits].index) * 100, "o", ms=3,
+            color=plots.SERIES[1], label="breach of the 1000-day VaR")
+    ax.set_ylim(-14, 6)
+    ax.set_ylabel("NIFTY ETF daily return, %")
+    ax.legend(loc="lower left", fontsize=8)
+    ax.set_title("A slow VaR gets the count right but its breaches arrive in bunches")
+    plots.save(fig, out_dir, "backtest_breaches")
+
+    names = list(BACKTEST_METHODS)
+    fig, ax = plt.subplots(figsize=(9, 4.6))
+    xs = np.arange(len(names))
+    for j, (port, color) in enumerate((("NIFTY ETF", plots.SERIES[0]),
+                                       ("5 large stocks", plots.SERIES[2]))):
+        rates = [results[port][k]["rate"] * 100 for k in names]
+        ax.bar(xs - 0.2 + 0.4 * j, rates, 0.38, color=color, label=port)
+        for i, k in enumerate(names):
+            pv = results[port][k]["kupiec"][1]
+            ax.text(i - 0.2 + 0.4 * j, rates[i] + 0.03, f"p={pv:.2f}" if pv >= 0.01 else "p<0.01",
+                    ha="center", fontsize=8, color=plots.TEXT_2)
+    ax.axhline(1, color=plots.TEXT, ls="--", lw=1)
+    ax.text(-0.45, 1.03, "promised: 1%", ha="left", fontsize=8)
+    ax.set_xticks(xs, [n.replace(", ", "\n") for n in names], fontsize=9)
+    ax.set_ylabel("share of days the 99% VaR was breached, %")
+    ax.grid(axis="x", visible=False)
+    ax.legend(loc="upper right", fontsize=9)
+    ax.set_title("Only the 1000-day historical VaR breached about as often as promised")
+    plots.save(fig, out_dir, "backtest_rates")
+
+    fig, ax = plt.subplots(figsize=(9, 4.6))
+    roll_a = nifty["historical, 250 days"]["roll"]
+    roll_b = nifty["historical, 1000 days"]["roll"]
+    ax.axhspan(-0.5, 4.5, color=plots.SERIES[2], alpha=0.10)
+    ax.axhspan(4.5, 9.5, color=plots.SERIES[3], alpha=0.15)
+    ax.axhspan(9.5, max(roll_a.max(), roll_b.max()) + 1, color=plots.SERIES[7], alpha=0.10)
+    for y, z in ((2, "green"), (7, "yellow"), (12, "red")):
+        ax.text(roll_a.index[int(len(roll_a) * 0.62)], y, f"Basel {z}", fontsize=8,
+                color=plots.TEXT_2, va="center")
+    ax.plot(roll_a.index, roll_a, color=plots.SERIES[0], label="historical, 250 days")
+    ax.plot(roll_b.index, roll_b, color=plots.SERIES[1], label="historical, 1000 days")
+    ax.set_ylabel("breaches of 99% VaR in the last 250 days")
+    ax.legend(loc="upper right", fontsize=9)
+    ax.set_title(f"Both hit the red zone in 2020; the slow one went deeper "
+                 f"({int(roll_b.max())} breaches vs {int(roll_a.max())})")
+    plots.save(fig, out_dir, "backtest_traffic")
+
+    out = {}
+    for port, res in results.items():
+        out[port] = {k: {"breaches": f"{v['x']}/{v['n']} = {v['rate']:.2%}",
+                         "kupiec p": round(v["kupiec"][1], 3),
+                         "independence p": round(v["indep"][1], 3),
+                         "P(breach | breach yesterday)": f"{v['after']:.1%}",
+                         "days red / yellow": (f"{v['red']:.0%}", f"{v['yellow']:.0%}"),
+                         "max breaches in 250 days": int(v["roll"].max()),
+                         "average VaR": f"{v['var'].mean():.2%}"}
+                     for k, v in res.items()}
+    first = nifty["historical, 250 days"]["var"].index[0]
+    out["evaluation starts"] = f"{first:%Y-%m-%d}"
+    red_b = roll_b[roll_b >= 10]
+    out["1000-day red spells"] = (f"{red_b.index[0]:%Y-%m-%d} to {red_b.index[-1]:%Y-%m-%d}"
+                                  if len(red_b) else "none")
+    return out
+
+
+REPORTS = {"methods": report_methods, "backtest": report_backtest}
