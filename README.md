@@ -75,11 +75,11 @@ random, not in clusters (Christoffersen's test: is a breach more likely the day 
 | Normal, 250 days | 2.08% | no (p < 0.01) | 9.9% | 12% |
 | Student-t, 250 days | 1.67% | no (p < 0.01) | 8.8% | 7% |
 
-- **Every one-year method breached too often:** a single year of calm data sets the bar too low for the
-  next shock; the normal curve worst of all (2.1% of days).
+- **Every one-year method breached too often:** 1.67% to 2.08% of days against the promised 1%, the normal
+  curve worst of all.
 - **The 1000-day VaR got the count right but not the timing:** after a breach, another followed the next day
-  18.9% of the time instead of 1%. A four-year window barely moves when volatility jumps, so in March 2020 it
-  was breached again and again.
+  18.9% of the time instead of 1%. As the chart above shows, its VaR barely moved through March 2020 while
+  the 250-day VaR rose to 6%, and it was breached again and again.
 
 <table><tr>
 <td><a href="docs/img/backtest_rates.png"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/img/backtest_rates.png"><img src="docs/img/backtest_rates.gif" alt="Share of days the 99% VaR was breached by method, NIFTY ETF and five stocks, with Kupiec p-values"></picture></a></td>
