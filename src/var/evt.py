@@ -13,6 +13,8 @@ with shape xi (tail fatness: 0 = exponential like a normal's tail, > 0 = power l
 import numpy as np
 from scipy.stats import genpareto
 
+SMALL = 1e-6  # |xi| below this uses the exponential (xi -> 0) formulas
+
 
 def fit_tail(returns, threshold_q: float = 0.95) -> dict:
     """Fit a GPD to the losses beyond the `threshold_q` quantile of losses."""
@@ -27,6 +29,8 @@ def fit_tail(returns, threshold_q: float = 0.95) -> dict:
 
 def evt_var(t: dict, q: float) -> float:
     xi, beta, u, share = t["xi"], t["beta"], t["u"], t["share"]
+    if abs(xi) < SMALL:  # exponential limit
+        return float(u - beta * np.log((1 - q) / share))
     return float(u + beta / xi * (((1 - q) / share) ** (-xi) - 1))
 
 
@@ -36,6 +40,8 @@ def evt_es(t: dict, q: float) -> float:
 
 
 def exceed_probability(t: dict, loss: float) -> float:
-    """Daily probability of a loss bigger than `loss` (a positive fraction)."""
+    """Daily probability of a loss bigger than `loss` (a positive fraction, at or above u)."""
     xi, beta, u, share = t["xi"], t["beta"], t["u"], t["share"]
+    if abs(xi) < SMALL:  # exponential limit
+        return float(share * np.exp(-(loss - u) / beta))
     return float(share * (1 + xi * (loss - u) / beta) ** (-1 / xi))

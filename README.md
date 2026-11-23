@@ -8,8 +8,8 @@ How much a portfolio can lose on a bad day, measured the ways risk desks do and 
 simulation, extreme value theory, risk decomposition, stress tests and option positions.
 
 **Live calculator: [dhirajdas18.github.io/value-at-risk](https://dhirajdas18.github.io/value-at-risk/)**.
-Enter rupee holdings in any of today's NIFTY 50 stocks or the NIFTY and gold ETFs and get 1-day and 10-day
-VaR and expected shortfall. It runs in your browser on five years of daily returns, rebuilt weekly; nothing
+Enter rupee holdings in any of today's NIFTY 50 stocks or the NIFTY and gold ETFs and get 1-day VaR and expected
+shortfall by four methods, 10-day historical VaR, each holding's share of the risk and four replayed crashes. It runs in your browser on five years of daily returns, rebuilt weekly; nothing
 you enter leaves the page.
 
 ## Features
@@ -25,7 +25,7 @@ you enter leaves the page.
 
 ## Findings
 
-### 1. A normal curve put NIFTY's 99% one-day loss 14% too low and its expected shortfall 32% too low
+### 1. A normal curve put NIFTY's 99% one-day loss 16% too low and its expected shortfall 31% too low
 
 <a href="docs/img/methods_distribution.png"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/img/methods_distribution.png"><img src="docs/img/methods_distribution.gif" alt="Daily profit and loss on 10 lakh rupees in the NIFTY ETF with 99% VaR by three methods" width="720"></picture></a>
 
@@ -36,19 +36,19 @@ shortfall (ES) is the average loss on those days.
 
 | ₹10 lakh, 99%, one day | Historical | Normal | Monte Carlo, normal | Monte Carlo, Student-t |
 |---|---|---|---|---|
-| NIFTY ETF: VaR / ES | ₹28,457 / ₹41,419 | ₹24,436 / ₹28,078 | ₹24,555 / ₹28,250 | ₹27,881 / ₹38,845 |
+| NIFTY ETF: VaR / ES | ₹28,415 / ₹39,485 | ₹23,830 / ₹27,383 | ₹23,946 / ₹27,551 | ₹27,134 / ₹36,779 |
 | 5 large stocks | ₹28,362 / ₹40,288 | ₹25,385 / ₹29,192 | ₹25,635 / ₹29,362 | ₹29,127 / ₹39,897 |
-| 70% NIFTY / 30% gold | ₹19,573 / ₹31,263 | ₹18,114 / ₹20,833 | ₹18,206 / ₹20,923 | ₹20,748 / ₹28,282 |
+| 70% NIFTY / 30% gold | ₹19,542 / ₹30,027 | ₹17,788 / ₹20,459 | ₹17,877 / ₹20,548 | ₹20,239 / ₹27,977 |
 
-- **The bell curve is too thin in the tail:** for the NIFTY ETF, normal VaR was 14% below historical and
-  normal ES 32% below. The normal 99% VaR was breached on 1.45% of days instead of 1%.
+- **The bell curve is too thin in the tail:** for the NIFTY ETF, normal VaR was 16% below historical and
+  normal ES 31% below. The normal 99% VaR was breached on 1.50% of days instead of 1%.
 - **Monte Carlo is only as good as its assumption:** with normal draws it reproduced the normal formula;
-  with Student-t draws matched to the data's fat tails (4.3 degrees of freedom) it came within 2% of
-  historical VaR and 6% of historical ES.
+  with Student-t draws matched to the data's fat tails (4.4 degrees of freedom) it came within 5% of
+  historical VaR and 7% of historical ES.
 - **Cornish-Fisher broke:** its correction for skew and fat tails is only valid while the corrected curve
   keeps rising, which fails above an excess kurtosis of 8 when there is no skew (its slope at the centre is
-  1 − 3K/24); NIFTY's daily returns had 17.7, and it returned an absurd ₹67,903. The calculator checks this and says so.
-- **Gold cut the risk:** moving 30% into gold lowered historical VaR from ₹28,457 to ₹19,573.
+  1 − 3K/24); NIFTY's daily returns had 14.0, and it returned an absurd ₹56,438. The calculator checks this and says so.
+- **Gold cut the risk:** moving 30% into gold lowered historical VaR from ₹28,415 to ₹19,542.
 
 <table><tr>
 <td><a href="docs/img/methods_compare.png"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/img/methods_compare.png"><img src="docs/img/methods_compare.gif" alt="99% VaR and expected shortfall by method for three portfolios"></picture></a></td>
@@ -56,9 +56,9 @@ shortfall (ES) is the average loss on those days.
 </tr></table>
 
 - **The √10 shortcut (right):** regulators scale one-day VaR to ten days by √10. On the NIFTY ETF that
-  matched actual ten-day VaR (from overlapping ten-day windows) at 95% (4.8% vs 4.9%) but overstated it at
-  99% (9.0% vs 7.7%) and 99.5% (11.1% vs 9.2%). Ten-day returns have thinner tails than daily ones: excess
-  kurtosis 17.8 for daily returns against 8.4 for non-overlapping ten-day returns.
+  matched actual ten-day VaR (from overlapping ten-day windows) at 95% (4.8% vs 4.8%) but overstated it at
+  99% (9.0% vs 7.7%) and 99.5% (11.1% vs 9.0%). Ten-day returns have thinner tails than daily ones: excess
+  kurtosis 14.0 for daily returns against 8.4 for non-overlapping ten-day returns.
 
 ### 2. Only a slow VaR breached as often as promised, and its breaches came in bunches
 
@@ -106,12 +106,12 @@ refitted monthly on the previous 500 days; shocks from the previous 500 days. Sa
 | Historical, 1000 days | 1.08% | yes (0.63) | 18.9% (p < 0.01) | 16 (red) |
 | EWMA volatility, normal curve | 2.05% | no (p < 0.01) | 1.4% | 12 (red) |
 | **Filtered historical, EWMA** | **1.08%** | **yes (0.63)** | **2.7% (p = 0.42)** | **8** |
-| Filtered historical, GARCH | 1.29% | yes (0.10) | 2.3% (p = 0.60) | 8 |
+| Filtered historical, GARCH | 1.23% | yes (0.19) | 2.4% (p = 0.55) | 8 |
 
 - **Two ingredients, two fixes:** scaling by current volatility fixed the timing (EWMA with a normal curve
   stopped clustering, 1.4% repeat breaches) but not the count (2.05%); keeping history's fat-tailed shocks
   fixed the count. Filtered historical simulation has both.
-- **Cheaper on average:** its average VaR was 2.34% of the portfolio against 2.51% for the 1000-day method,
+- **Cheaper on average:** its average VaR was 2.34% of the portfolio against 2.50% for the 1000-day method,
   with the same breach count.
 - **Five stocks agree:** filtered historical, EWMA breached 1.08% of days there too, with no clustering.
 
@@ -139,7 +139,7 @@ from 1,000 simulations drawn from each day's own forecast distribution.
 | 97.5% ES, 2013–2026 | NIFTY ETF: ES vs 99% VaR | Z2 (p) | 5 large stocks: Z2 (p) |
 |---|---|---|---|
 | Historical, 250 days | 2.40% vs 2.35% | −0.42 (p < 0.01) | −0.32 (p = 0.06) |
-| Historical, 1000 days | 2.77% vs 2.51% | +0.05 (p = 0.66) | +0.00 (p = 0.47) |
+| Historical, 1000 days | 2.74% vs 2.50% | +0.04 (p = 0.63) | +0.00 (p = 0.47) |
 | Normal, 250 days | 2.03% vs 2.02% | −0.61 (p < 0.01) | −0.50 (p < 0.01) |
 | Filtered historical, EWMA | 2.37% vs 2.34% | −0.13 (p = 0.21) | −0.10 (p = 0.30) |
 
@@ -159,7 +159,7 @@ from 1,000 simulations drawn from each day's own forecast distribution.
   one-year historical ES forecast by 1.3 points on average in 2020; filtered historical's gap that year was
   0.5 points.
 
-### 5. A 10% one-day fall is a once-in-23-years event by extreme value theory and impossible by a normal curve; NIFTY had two
+### 5. A 10% one-day fall is a once-in-40-years event by extreme value theory and impossible by a normal curve; NIFTY had one in 18 years
 
 <a href="docs/img/evt_tail.png"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/img/evt_tail.png"><img src="docs/img/evt_tail.gif" alt="Share of days with a loss bigger than each size for the NIFTY ETF, against normal, Student-t and extreme value fits" width="720"></picture></a>
 
@@ -167,33 +167,32 @@ Extreme value theory fits only the tail: here the 221 days (5%) with the biggest
 January 2009 to November 2026, modelled with a generalised Pareto distribution (peaks over threshold). Its
 shape ξ measures how fat the tail is: 0 is a thin, normal-like tail; above 0 the tail decays like a power.
 
-- **NIFTY's tail is fat:** ξ = 0.27 (90% bootstrap range 0.14 to 0.39), and above zero at every threshold
-  tried from the 90th to the 97.5th percentile.
+- **NIFTY's tail is fat:** ξ = 0.21 (90% bootstrap range 0.08 to 0.31), and the lower end of the range stays
+  above zero at every threshold tried from the 90th to the 97.5th percentile.
 
 | One-day loss bigger than | Days it happened (17.9 years) | Extreme value: once every | Student-t | Normal curve |
 |---|---|---|---|---|
-| 5% | 8 | 2.3 years | 3.5 years | 3,200 years |
-| 8% | 2 | 10.9 years | 23.9 years | 10¹¹ years |
-| 10% | 2 | 23.4 years | 60.8 years | 10¹⁸ years |
-| 13% | 0 | 58.4 years | 185 years | 10³¹ years |
+| 5% | 7 | 2.8 years | 4.0 years | 5,700 years |
+| 8% | 1 | 16.4 years | 28.5 years | 10¹¹ years |
+| 10% | 1 | 40.0 years | 74.1 years | 10¹⁹ years |
+| 13% | 0 | 118 years | 231 years | 10³² years |
 
-- **Even the extreme value fit was surprised:** the two biggest losses, both in March 2020 (10.2% and 11.6%),
-  sit above its curve. With 18 years of data, two such days can't settle whether the true rate is once in 23
-  years or once in 9.
+- **One day can't settle the far tail:** the biggest loss, 10.2% on 23 March 2020, sits above the extreme
+  value curve. With one such day in 17.9 years, the 90% Poisson range for its rate runs from once in 3.8 years to once in 349.
 
 <table><tr>
 <td><a href="docs/img/evt_levels.png"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/img/evt_levels.png"><img src="docs/img/evt_levels.gif" alt="One-day VaR at 99, 99.5 and 99.9 percent by historical, normal, Student-t and extreme value methods"></picture></a></td>
 <td><a href="docs/img/evt_threshold.png"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/img/evt_threshold.png"><img src="docs/img/evt_threshold.gif" alt="Estimated tail shape xi at five thresholds with 90 percent bootstrap ranges"></picture></a></td>
 </tr></table>
 
-- **At 99.9% (left):** VaR was 5.88% by history (resting on 5 days), 5.95% by extreme value theory (resting
-  on 221), 5.18% by Student-t and 3.26% by a normal curve. ES at 99.9%: 8.41% historical, 8.42% extreme value.
+- **At 99.9% (left):** VaR was 5.62% by history (resting on 5 days), 5.54% by extreme value theory (resting
+  on 221), 5.00% by Student-t and 3.18% by a normal curve. ES at 99.9%: 7.25% historical, 7.46% extreme value.
 - **Split test:** fitted on 2009–2019 and tested on 2020–2026 (1.7 breaches of a 99.9% VaR expected),
-  historical, Student-t and extreme value VaR were each breached 3 times, all in March 2020 (Poisson
-  p = 0.25); the normal curve 9 times (p < 0.01). Extreme value theory didn't beat plain history at 99.9%;
-  its value is a smooth tail that rests on many days and extends beyond the worst day seen.
+  historical, Student-t and extreme value VaR were each breached 4 times (Poisson p = 0.09); the normal curve
+  9 times (p < 0.01). Extreme value theory didn't beat plain history at 99.9%; its value is a smooth tail that
+  rests on many days and extends beyond the worst day seen.
 
-### 6. The COVID crash cost 12 times the NIFTY ETF's 99% one-day VaR in 21 trading days; gold carried 14% of a 70/30 portfolio's risk over 18 years and 67% in the last one
+### 6. The COVID crash cost 12 times the NIFTY ETF's 99% one-day VaR in 21 trading days; gold carried 15% of a 70/30 portfolio's risk over 18 years and 68% in the last one
 
 <a href="docs/img/stress_scenarios.png"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/img/stress_scenarios.png"><img src="docs/img/stress_scenarios.gif" alt="Loss on 10 lakh rupees held today in four historical episodes, for three portfolios, against the NIFTY ETF's 99% one-day VaR" width="720"></picture></a>
 
@@ -213,8 +212,9 @@ cost. Losses on ₹10 lakh, and as a multiple of each portfolio's 99% one-day hi
 
 - **Gold didn't cushion demonetisation:** the gold ETF fell 9.8% and the NIFTY ETF 8.4%, so the 70/30 mix
   lost more than NIFTY alone.
-- **Election day, ETF against index:** NIFTY fell 5.9% on 4 June 2024 but the ETF's traded price fell 3.0%,
-  and it rose 0.3% the next day against the index's 3.4%. The stress uses the price you could have sold at.
+- **Election day, ETF against index:** on Yahoo's closing prices NIFTY fell 5.9% on 4 June 2024 and the ETF
+  3.0%; the next day they rose 3.4% and 0.3%, so over the two days both fell 2.7%. Not checked against NSE's
+  own closing prices; the one-day scenario uses Yahoo's close.
 
 <table><tr>
 <td><a href="docs/img/decomp_shares.png"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/img/decomp_shares.png"><img src="docs/img/decomp_shares.gif" alt="Each holding's share of the money and of the 97.5% expected shortfall in two portfolios"></picture></a></td>
@@ -224,14 +224,14 @@ cost. Losses on ₹10 lakh, and as a multiple of each portfolio's 99% one-day hi
 - **Risk by holding (left):** each holding's component expected shortfall is its average loss on the
   portfolio's worst 2.5% of days; the components add up exactly to the portfolio's 97.5% ES. In the 5-stock
   portfolio, equal money gave INFY 25% of the risk and ITC 16%. In the 70/30 mix, gold was 30% of the money
-  and 14% of the risk (the normal-curve VaR split says 13%).
-- **The split depends on the window:** gold's share of the 70/30 risk was 14% over 2009–2026, 30% over the
-  last 5 years, 47% over the last 3 and 67% over the last year. Over that year gold's daily volatility was
+  and 15% of the risk (the normal-curve VaR split says 14%).
+- **The split depends on the window:** gold's share of the 70/30 risk was 15% over 2009–2026, 30% over the
+  last 5 years, 48% over the last 3 and 68% over the last year. Over that year gold's daily volatility was
   2.0% against NIFTY's 0.86%, and it fell 10.5% on 30 January 2026 and 9.5% on 2 February.
-- **Marginal against recomputed (right):** each extra rupee of NIFTY added 2.77 paise of ES and each rupee of
-  gold 1.06 paise. That slope matched a full recomputation for ₹10,000 trades. For ₹1 lakh it was 2% short for
-  NIFTY and 12% short for gold; for ₹10 lakh, 6% and 46% short. The marginal is the slope at today's mix, and
-  the recomputed curve for gold bends upward.
+- **Marginal against recomputed (right):** each extra rupee of NIFTY added 2.69 paise of ES and each rupee of
+  gold 1.08 paise. That slope came within ₹1 of a full recomputation for ₹10,000 trades. For ₹1 lakh it was
+  2% short for NIFTY and 12% short for gold; for ₹10 lakh, 6% and 46% short. The marginal is the slope at
+  today's mix, and the recomputed curve for gold bends upward.
 
 ### 7. For option books, delta-gamma VaR erred both ways: 25% too low on a short put, 37% too high on a short straddle
 

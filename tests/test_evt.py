@@ -33,3 +33,13 @@ def test_evt_var_and_es_match_the_true_quantiles():
 def test_exceed_probability_inverts_var():
     t = fit_tail(_pareto_losses(), threshold_q=0.95)
     assert exceed_probability(t, evt_var(t, 0.999)) == pytest.approx(0.001, rel=1e-6)
+
+
+def test_zero_tail_shape_uses_the_exponential_limit():
+    t = {"xi": 0.0, "beta": 0.01, "u": 0.02, "share": 0.05}
+    # exponential tail: P(loss > x) = share * exp(-(x - u) / beta)
+    assert exceed_probability(t, 0.05) == pytest.approx(0.05 * np.exp(-3), rel=1e-9)
+    assert evt_var(t, 0.999) == pytest.approx(0.02 + 0.01 * np.log(50), rel=1e-9)
+    assert evt_es(t, 0.999) == pytest.approx(evt_var(t, 0.999) + 0.01, rel=1e-9)
+    near = dict(t, xi=1e-9)
+    assert evt_var(near, 0.999) == pytest.approx(evt_var(t, 0.999), rel=1e-6)

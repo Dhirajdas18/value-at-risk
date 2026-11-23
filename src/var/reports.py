@@ -69,7 +69,8 @@ def report_methods(out_dir: Path) -> dict:
              "Monte Carlo, Student-t": plots.SERIES[1]}
     for m, color in marks.items():
         v = -t[m][0] * CAPITAL / 1000
-        ax.axvline(v, color=color, ls="--", lw=1.2, label=f"99% VaR, {m}: ₹{-v:.1f}k")
+        short = {"Monte Carlo, Student-t": "Student-t MC"}.get(m, m)
+        ax.axvline(v, color=color, ls="--", lw=1.2, label=f"VaR, {short}: ₹{-v:.1f}k")
     ax.set_xlim(-60, 25)
     ax.annotate("days worse than −₹60k\npiled at the edge", (-59, 0.002), xytext=(-57, 0.012),
                 fontsize=8, color=plots.TEXT_2, arrowprops=dict(arrowstyle="-", color=plots.MUTED))
@@ -419,6 +420,7 @@ def report_es(out_dir: Path) -> dict:
     fig, ax = plt.subplots(figsize=(9, 4.6))
     years = sorted(set(nifty[names[0]]["x"].index.year))
     xs = np.arange(len(years))
+    gaps = {}
     for j, (k, color) in enumerate((("historical, 250 days", plots.SERIES[1]),
                                     ("filtered historical, EWMA", plots.SERIES[0]))):
         d = nifty[k]
@@ -426,6 +428,7 @@ def report_es(out_dir: Path) -> dict:
         actual = (-d["x"][hit]).groupby(hit[hit].index.year).mean()
         forecast = d["es"][hit].groupby(hit[hit].index.year).mean()
         gap = ((actual - forecast) * 100).reindex(years)
+        gaps[k] = round(float(gap.get(2020, np.nan)), 2)
         ax.bar(xs - 0.2 + 0.4 * j, gap, 0.38, color=color, label=k)
     ax.axhline(0, color=plots.TEXT, lw=1)
     ax.set_xticks(xs, years, fontsize=8)
@@ -435,10 +438,12 @@ def report_es(out_dir: Path) -> dict:
     ax.set_title("When breached, losses beat the one-year forecast most in 2020")
     plots.save(fig, out_dir, "es_by_year")
 
-    return {port: {k: (f"ES97.5 {v['es_mean']:.2%}", f"VaR99 {v['var99_mean']:.2%}",
-                       f"ratio {v['es_mean'] / v['var99_mean']:.2f}",
-                       f"breach97.5 {v['breach']:.2%}", f"Z2 {v['z2']:.3f}", f"p {v['p']:.3f}")
-                   for k, v in rows.items()} for port, rows in res.items()}
+    out = {port: {k: (f"ES97.5 {v['es_mean']:.2%}", f"VaR99 {v['var99_mean']:.2%}",
+                      f"ratio {v['es_mean'] / v['var99_mean']:.2f}",
+                      f"breach97.5 {v['breach']:.2%}", f"Z2 {v['z2']:.3f}", f"p {v['p']:.3f}")
+                  for k, v in rows.items()} for port, rows in res.items()}
+    out["2020 gap, actual loss minus ES on breach days (pts)"] = gaps
+    return out
 
 
 def _t_var(p: pd.Series, q: float) -> float:
@@ -503,7 +508,8 @@ def report_evt(out_dir: Path) -> dict:
     ax.set_ylabel("one-day VaR, % of the NIFTY ETF")
     ax.grid(axis="x", visible=False)
     ax.legend(loc="upper left", fontsize=8)
-    ax.set_title("At 99.9% the normal curve puts the loss at half what history shows")
+    share = table[0.999]["normal"] / table[0.999]["historical"]
+    ax.set_title(f"At 99.9% the normal curve puts the loss at {share:.0%} of what history shows")
     plots.save(fig, out_dir, "evt_levels")
 
     rng = np.random.default_rng(0)
@@ -598,7 +604,7 @@ def report_decomp(out_dir: Path) -> dict:
     h = books["70% NIFTY / 30% gold"]
     c = component_es(Rs, h)
     marginal = c / pd.Series(h)
-    sizes = np.linspace(0, 1_000_000, 21)
+    sizes = np.r_[0.0, 10_000.0, np.linspace(50_000, 1_000_000, 20)]
     inc = {s: [incremental_es(Rs, h, s, a) if a else 0.0 for a in sizes]
            for s in ("NIFTYBEES", "GOLDBEES")}
     fig, ax = plt.subplots(figsize=(9, 4.6))
@@ -647,8 +653,20 @@ def report_decomp(out_dir: Path) -> dict:
         "70/30 ES97.5 ₹": round(c.sum()),
         "marginal ES per ₹ (70/30)": marginal.round(4).to_dict(),
         "incremental ES ₹ (recomputed, marginal) at 0.1/1/3/10 lakh": {
-            s: [(round(inc[s][i]), round(marginal[s] * sizes[i])) for i in (0, 2, 6, 20)]
+            s: [(round(inc[s][i]), round(marginal[s] * sizes[i]))
+                for i in (int(np.flatnonzero(sizes == a)[0])
+                          for a in (10_000, 100_000, 300_000, 1_000_000))]
             for s in inc},
+        "gold's share of 70/30 ES97.5 by window (days)": {
+            w: f"{(c_ := component_es(R.iloc[-w:], h))['GOLDBEES'] / c_.sum():.1%}"
+            for w in (250, 750, 1250)},
+        "last 250 days daily vol, gold / NIFTY ETF": tuple(
+            f"{R[k].iloc[-250:].std():.2%}" for k in ("GOLDBEES", "NIFTYBEES")),
+        "gold's worst days, last 250": {f"{d:%d %b %Y}": f"{v:.1%}"
+                                        for d, v in R["GOLDBEES"].iloc[-250:].nsmallest(2).items()},
+        "4-5 Jun 2024, NIFTY index / NIFTY ETF": {
+            f"{d:%d %b}": (f"{R.loc[d, 'NIFTY']:.1%}", f"{R.loc[d, 'NIFTYBEES']:.1%}")
+            for d in pd.to_datetime(["2024-06-04", "2024-06-05"])},
         "99% one-day VaR ₹": {n: round(v) for n, v in var99.items()},
         "stress ₹ (loss, × VaR99)": {
             n: {sc: (round(-d["pnl"].sum()), round(-d["pnl"].sum() / var99[n], 1))
