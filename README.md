@@ -46,8 +46,8 @@ shortfall (ES) is the average loss on those days.
   with Student-t draws matched to the data's fat tails (4.3 degrees of freedom) it came within 2% of
   historical VaR and 6% of historical ES.
 - **Cornish-Fisher broke:** its correction for skew and fat tails is only valid while the corrected curve
-  keeps rising, which fails above roughly 6 of excess kurtosis (Maillard 2012); NIFTY's daily returns had
-  17.7, and it returned an absurd ₹67,903. The calculator checks this and says so.
+  keeps rising, which fails above an excess kurtosis of 8 when there is no skew (its slope at the centre is
+  1 − 3K/24); NIFTY's daily returns had 17.7, and it returned an absurd ₹67,903. The calculator checks this and says so.
 - **Gold cut the risk:** moving 30% into gold lowered historical VaR from ₹28,457 to ₹19,573.
 
 <table><tr>
