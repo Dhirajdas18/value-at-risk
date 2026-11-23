@@ -441,5 +441,123 @@ def report_es(out_dir: Path) -> dict:
                    for k, v in rows.items()} for port, rows in res.items()}
 
 
+def _t_var(p: pd.Series, q: float) -> float:
+    """Student-t VaR with degrees of freedom matched to the excess kurtosis."""
+    from scipy.stats import t as tdist
+
+    k = kurtosis(p)
+    df = 4 + 6 / k
+    scale = p.std() * np.sqrt((df - 2) / df)
+    return float(-(p.mean() + scale * tdist.ppf(1 - q, df))), df, scale
+
+
+def report_evt(out_dir: Path) -> dict:
+    """Peaks over threshold on the NIFTY ETF: the far tail, rare-loss frequencies, a split test."""
+    from scipy.stats import poisson
+    from scipy.stats import t as tdist
+
+    from var.evt import evt_es, evt_var, exceed_probability, fit_tail
+
+    R = returns()
+    p = R.loc[R.index >= START, "NIFTYBEES"].dropna()
+    tail = fit_tail(p, 0.95)
+    mu, sd = float(p.mean()), float(p.std())
+    _, df, scale = _t_var(p, 0.99)
+    years = (p.index[-1] - p.index[0]).days / 365.25
+    per_year = len(p) / years
+
+    loss = np.sort(-p.to_numpy())[::-1]
+    emp = np.arange(1, len(loss) + 1) / len(loss)
+    big = loss > 0.01
+    fig, ax = plt.subplots(figsize=(9, 4.8))
+    ax.plot(loss[big] * 100, emp[big], "o", ms=3, color=plots.MUTED, label="NIFTY ETF, actual")
+    xs = np.linspace(0.01, 0.15, 300)
+    ax.plot(xs * 100, norm.sf((xs + mu) / sd), color=plots.SERIES[0], label="normal curve")
+    ax.plot(xs * 100, tdist.sf((xs + mu) / scale, df), color=plots.SERIES[2],
+            label=f"Student-t ({df:.1f} degrees of freedom)")
+    xe = xs[xs > tail["u"]]
+    ax.plot(xe * 100, [exceed_probability(tail, x) for x in xe], color=plots.SERIES[1], lw=2,
+            label=f"extreme value fit (ξ = {tail['xi']:.2f})")
+    ax.set_yscale("log")
+    ax.set_ylim(1e-6, 0.3)
+    ax.set_xlabel("one-day loss, %")
+    ax.set_ylabel("share of days with a bigger loss (log scale)")
+    ax.legend(loc="upper right", fontsize=8)
+    ax.set_title("The normal curve's tail collapses; the extreme value fit follows the data")
+    plots.save(fig, out_dir, "evt_tail")
+
+    levels = [0.99, 0.995, 0.999]
+    table = {q: {"historical": historical(p, q)[0], "normal": normal(mu, sd, q)[0],
+                 "Student-t": _t_var(p, q)[0], "extreme value": evt_var(tail, q)}
+             for q in levels}
+    fig, ax = plt.subplots(figsize=(9, 4.6))
+    meths = list(table[levels[0]])
+    colors = [plots.TEXT, plots.SERIES[0], plots.SERIES[2], plots.SERIES[1]]
+    xs_ = np.arange(len(levels))
+    for j, (m, c) in enumerate(zip(meths, colors, strict=True)):
+        vals = [table[q][m] * 100 for q in levels]
+        ax.bar(xs_ - 0.3 + 0.2 * j, vals, 0.19, color=c, label=m)
+        for i, v in enumerate(vals):
+            ax.text(i - 0.3 + 0.2 * j, v + 0.05, f"{v:.1f}", ha="center", fontsize=7)
+    ax.set_xticks(xs_, [f"{q:.1%}" for q in levels])
+    ax.set_ylabel("one-day VaR, % of the NIFTY ETF")
+    ax.grid(axis="x", visible=False)
+    ax.legend(loc="upper left", fontsize=8)
+    ax.set_title("At 99.9% the normal curve puts the loss at half what history shows")
+    plots.save(fig, out_dir, "evt_levels")
+
+    rng = np.random.default_rng(0)
+    thresholds = [0.90, 0.925, 0.95, 0.965, 0.975]
+    xi_mid, xi_lo, xi_hi = [], [], []
+    for th in thresholds:
+        xi_mid.append(fit_tail(p, th)["xi"])
+        boot = [fit_tail(rng.choice(p.to_numpy(), len(p)), th)["xi"] for _ in range(200)]
+        xi_lo.append(np.quantile(boot, 0.05))
+        xi_hi.append(np.quantile(boot, 0.95))
+    fig, ax = plt.subplots(figsize=(9, 4.6))
+    tx = [t_ * 100 for t_ in thresholds]
+    ax.fill_between(tx, xi_lo, xi_hi, color=plots.SERIES[1], alpha=0.15, lw=0,
+                    label="90% bootstrap range")
+    ax.plot(tx, xi_mid, "o-", color=plots.SERIES[1], label="estimated tail shape ξ")
+    ax.axhline(0, color=plots.TEXT_2, lw=1, ls="--")
+    ax.text(tx[0], 0.01, "0 = thin, normal-like tail", fontsize=8, color=plots.TEXT_2)
+    ax.set_xlabel("threshold: losses beyond this percentile are treated as the tail")
+    ax.set_ylabel("ξ")
+    ax.legend(loc="upper left", fontsize=9)
+    ax.set_title("Whichever threshold, the tail shape stays clearly above zero")
+    plots.save(fig, out_dir, "evt_threshold")
+
+    a, b = p[p.index < "2020-01-01"], p[p.index >= "2020-01-01"]
+    ta = fit_tail(a, 0.95)
+    split = {"historical": historical(a, 0.999)[0], "normal": normal(a.mean(), a.std(), 0.999)[0],
+             "Student-t": _t_var(a, 0.999)[0], "extreme value": evt_var(ta, 0.999)}
+    expected = len(b) * 0.001
+    split_out = {m: (f"{v:.2%}", int((b < -v).sum()),
+                     round(float(poisson.sf(int((b < -v).sum()) - 1, expected)), 3))
+                 for m, v in split.items()}
+    freq = {}
+    for x in (0.05, 0.08, 0.10, 0.13):
+        freq[f"loss > {x:.0%}"] = {
+            "actual days": int((p < -x).sum()),
+            "EVT every (years)": round(1 / (exceed_probability(tail, x) * per_year), 1),
+            "Student-t every (years)": round(1 / (tdist.sf((x + mu) / scale, df) * per_year), 1),
+            "normal every (years)": f"{1 / (norm.sf((x + mu) / sd) * per_year):.2g}"}
+    return {
+        "tail fit": {k: round(v, 4) if isinstance(v, float) else v for k, v in tail.items()},
+        "xi by threshold (low, mid, high)": {f"{t_:.1%}": (round(l_, 2), round(m_, 2), round(h_, 2))
+                                             for t_, l_, m_, h_ in zip(thresholds, xi_lo, xi_mid,
+                                                                       xi_hi, strict=True)},
+        "VaR by level": {f"{q:.1%}": {m: f"{v:.2%}" for m, v in d.items()}
+                         for q, d in table.items()},
+        "ES 99.9%: historical / EVT": (f"{historical(p, 0.999)[1]:.2%}",
+                                       f"{evt_es(tail, 0.999):.2%}"),
+        "days beyond historical 99.9%": int((p < -historical(p, 0.999)[0]).sum()),
+        "frequencies": freq,
+        "split: fit 2009-19, test 2020-26 (VaR99.9, breaches, Poisson p)": split_out,
+        "split expected breaches": round(expected, 2),
+        "years": round(years, 1),
+    }
+
+
 REPORTS = {"methods": report_methods, "backtest": report_backtest, "fhs": report_fhs,
-           "es": report_es}
+           "es": report_es, "evt": report_evt}

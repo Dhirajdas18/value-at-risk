@@ -19,7 +19,7 @@ you enter leaves the page.
 - [x] Backtesting: Kupiec, Christoffersen, Basel traffic light
 - [x] Filtered historical simulation (EWMA / GARCH), also in the calculator
 - [x] Expected shortfall at 97.5% and its backtest (Acerbi-Székely)
-- [ ] Extreme value theory for 99.9%
+- [x] Extreme value theory (peaks over threshold) for 99.9%
 - [ ] Marginal and component VaR; historical stress scenarios
 - [ ] Options: delta-gamma vs full revaluation
 
@@ -159,12 +159,46 @@ from 1,000 simulations drawn from each day's own forecast distribution.
   one-year historical ES forecast by 1.3 points on average in 2020; filtered historical's gap that year was
   0.5 points.
 
+### 5. A 10% one-day fall is a once-in-23-years event by extreme value theory and impossible by a normal curve; NIFTY had two
+
+<a href="docs/img/evt_tail.png"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/img/evt_tail.png"><img src="docs/img/evt_tail.gif" alt="Share of days with a loss bigger than each size for the NIFTY ETF, against normal, Student-t and extreme value fits" width="720"></picture></a>
+
+Extreme value theory fits only the tail: here the 221 days (5%) with the biggest losses on the NIFTY ETF,
+January 2009 to November 2026, modelled with a generalised Pareto distribution (peaks over threshold). Its
+shape ξ measures how fat the tail is: 0 is a thin, normal-like tail; above 0 the tail decays like a power.
+
+- **NIFTY's tail is fat:** ξ = 0.27 (90% bootstrap range 0.14 to 0.39), and above zero at every threshold
+  tried from the 90th to the 97.5th percentile.
+
+| One-day loss bigger than | Days it happened (17.9 years) | Extreme value: once every | Student-t | Normal curve |
+|---|---|---|---|---|
+| 5% | 8 | 2.3 years | 3.5 years | 3,200 years |
+| 8% | 2 | 10.9 years | 23.9 years | 10¹¹ years |
+| 10% | 2 | 23.4 years | 60.8 years | 10¹⁸ years |
+| 13% | 0 | 58.4 years | 185 years | 10³¹ years |
+
+- **Even the extreme value fit was surprised:** the two biggest losses, both in March 2020 (10.2% and 11.6%),
+  sit above its curve. With 18 years of data, two such days can't settle whether the true rate is once in 23
+  years or once in 9.
+
+<table><tr>
+<td><a href="docs/img/evt_levels.png"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/img/evt_levels.png"><img src="docs/img/evt_levels.gif" alt="One-day VaR at 99, 99.5 and 99.9 percent by historical, normal, Student-t and extreme value methods"></picture></a></td>
+<td><a href="docs/img/evt_threshold.png"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/img/evt_threshold.png"><img src="docs/img/evt_threshold.gif" alt="Estimated tail shape xi at five thresholds with 90 percent bootstrap ranges"></picture></a></td>
+</tr></table>
+
+- **At 99.9% (left):** VaR was 5.88% by history (resting on 5 days), 5.95% by extreme value theory (resting
+  on 221), 5.18% by Student-t and 3.26% by a normal curve. ES at 99.9%: 8.41% historical, 8.42% extreme value.
+- **Split test:** fitted on 2009–2019 and tested on 2020–2026 (1.7 breaches of a 99.9% VaR expected),
+  historical, Student-t and extreme value VaR were each breached 3 times, all in March 2020 (Poisson
+  p = 0.25); the normal curve 9 times (p < 0.01). Extreme value theory didn't beat plain history at 99.9%;
+  its value is a smooth tail that rests on many days and extends beyond the worst day seen.
+
 ## Quick start
 
 ```bash
 uv sync
 uv run python scripts/fetch_data.py         # Yahoo Finance -> data/prices.parquet
-uv run var report methods                   # also: backtest, fhs, es; charts -> out/
+uv run var report methods                   # also: backtest, fhs, es, evt; charts -> out/
 uv run python scripts/build_site.py         # dashboard and calculator -> site/index.html
 uv run pytest
 ```
@@ -176,6 +210,7 @@ uv run pytest
 - `src/var/backtest.py`: rolling VaR forecasts, Kupiec and Christoffersen tests, Basel traffic light.
 - `src/var/fhs.py`: EWMA and GARCH(1,1) volatility forecasts and filtered historical simulation.
 - `src/var/es.py`: expected-shortfall forecasts and the Acerbi-Székely backtest with simulated p-values.
+- `src/var/evt.py`: peaks-over-threshold fit (generalised Pareto), VaR, ES and exceedance probabilities.
 - `src/var/var.js`, `calculator.html`: the same methods in the browser; a test runs them through Node
   against Python. Five years of returns are embedded as integers (0.001% units).
 - `src/var/data.py`: Yahoo prices for today's NIFTY 50 and two ETFs since 2007, with known errors
