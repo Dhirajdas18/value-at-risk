@@ -661,3 +661,104 @@ def report_decomp(out_dir: Path) -> dict:
 
 
 REPORTS["decomp"] = report_decomp
+
+
+def option_scenarios(days: int) -> tuple[pd.Series, pd.Series]:
+    """NIFTY's move and India VIX's ratio over every overlapping `days`-day window since START."""
+    t = pd.read_parquet(DATA_PATH)["close"][["NIFTY", "INDIAVIX"]].loc[START:].dropna()
+    ret = (t["NIFTY"] / t["NIFTY"].shift(days) - 1).dropna()
+    return ret, (t["INDIAVIX"] / t["INDIAVIX"].shift(days)).dropna()
+
+
+OPTION_METHODS = ("delta", "delta-gamma", "delta-gamma-vega", "full")
+
+
+def report_options(out_dir: Path) -> dict:
+    """VaR of three NIFTY option books by Greeks approximation and by full repricing."""
+    from var.options import BOOKS, book_pnl
+
+    t = pd.read_parquet(DATA_PATH)["close"][["NIFTY", "INDIAVIX"]].dropna()
+    S, vol, asof = float(t["NIFTY"].iloc[-1]), float(t["INDIAVIX"].iloc[-1]) / 100, t.index[-1]
+    horizons = {1: 1 / 365, 10: 14 / 365}  # 10 trading days ≈ 14 calendar days of decay
+    var = {}
+    pnl10 = {}
+    for h, dt in horizons.items():
+        ret, vr = option_scenarios(h)
+        for name, make in BOOKS.items():
+            for m in OPTION_METHODS:
+                p = book_pnl(make(S), S, vol, ret.to_numpy(), vr.to_numpy(), dt, m)
+                var[(h, name, m)] = -float(np.quantile(p, 0.01))
+                if h == 10:
+                    pnl10[(name, m)] = p
+    ret10, vr10 = option_scenarios(10)
+
+    colors = {"delta": plots.SERIES[2], "delta-gamma": plots.SERIES[0],
+              "delta-gamma-vega": plots.SERIES[3], "full": plots.TEXT}
+    fig, axes = plt.subplots(1, 2, figsize=(10, 4.6), sharey=True)
+    xs = np.linspace(-0.31, 0.21, 300)
+    for ax, name in zip(axes, ("short 5% OTM put", "short straddle"), strict=True):
+        book = BOOKS[name](S)
+        order = np.argsort(ret10.to_numpy())
+        ax.plot(ret10.to_numpy()[order] * 100, pnl10[(name, "full")][order] / 1e3, "o", ms=2,
+                color=plots.MUTED, label="full repricing, each 10-day window (with VIX)")
+        for m, ls in (("delta", "--"), ("delta-gamma", "-"), ("full", "-")):
+            ax.plot(xs * 100, book_pnl(book, S, vol, xs, np.ones_like(xs), 14 / 365, m) / 1e3,
+                    color=colors[m], ls=ls, lw=2 if m == "full" else 1.5,
+                    label=f"{m}{', VIX unchanged' if m == 'full' else ''}")
+        ax.axhline(0, color=plots.TEXT_2, lw=0.8)
+        ax.set_title(name, fontsize=10)
+        ax.set_xlabel("NIFTY move over 10 trading days, %")
+    axes[0].set_ylabel("P&L on ₹10 lakh of notional, ₹ thousand")
+    axes[0].set_ylim(-260, 40)
+    axes[0].legend(loc="lower right", fontsize=7)
+    fig.suptitle("A straight line misses both books; the parabola misses on big moves",
+                 fontweight="bold")
+    plots.save(fig, out_dir, "options_payoff")
+
+    fig, ax = plt.subplots(figsize=(9, 4.6))
+    books = list(BOOKS)
+    xb = np.arange(len(books))
+    for j, m in enumerate(OPTION_METHODS):
+        vals = [var[(10, b, m)] / 1e3 for b in books]
+        ax.bar(xb - 0.3 + 0.2 * j, vals, 0.19, color=colors[m], label=m)
+        for i, v in enumerate(vals):
+            ax.text(i - 0.3 + 0.2 * j, v + 1.5, f"{v:.0f}", ha="center", fontsize=7)
+    ax.set_xticks(xb, books)
+    ax.set_ylabel("99% 10-day VaR, ₹ thousand")
+    ax.grid(axis="x", visible=False)
+    ax.legend(loc="upper left", fontsize=8)
+    lo = 1 - var[(10, "short 5% OTM put", "delta-gamma")] / var[(10, "short 5% OTM put", "full")]
+    hi = var[(10, "short straddle", "delta-gamma")] / var[(10, "short straddle", "full")] - 1
+    ax.set_title(f"Delta-gamma: the short put's 10-day VaR {lo:.0%} too low, "
+                 f"the straddle's {hi:.0%} too high")
+    plots.save(fig, out_dir, "options_var")
+
+    fig, ax = plt.subplots(figsize=(9, 4.6))
+    order = np.argsort(ret10.to_numpy())
+    for name, c in (("short 5% OTM put", plots.SERIES[1]), ("short straddle", plots.SERIES[0])):
+        err = (pnl10[(name, "delta-gamma")] - pnl10[(name, "full")])[order] / 1e3
+        ax.plot(ret10.to_numpy()[order] * 100, err, "o", ms=2, color=c, label=name)
+    ax.axhline(0, color=plots.TEXT_2, lw=0.8)
+    ax.set_xlabel("NIFTY move over 10 trading days, %")
+    ax.set_ylabel("delta-gamma minus repricing, ₹ thousand\n(below 0: overstates the loss)")
+    ax.legend(loc="lower right", fontsize=8)
+    ax.set_title("The approximation's error grows with the size of the move")
+    plots.save(fig, out_dir, "options_error")
+
+    return {
+        "priced at": f"{asof:%d %b %Y}: NIFTY {S:,.0f}, India VIX {vol:.1%}, 30 days to expiry",
+        "scenarios (1-day, 10-day)": (len(option_scenarios(1)[0]), len(ret10)),
+        "99% VaR ₹ (horizon, book: method -> VaR, error vs full)": {
+            f"{h}d {b}": {m: (round(var[(h, b, m)]),
+                              f"{var[(h, b, m)] / var[(h, b, 'full')] - 1:+.0%}")
+                          for m in OPTION_METHODS}
+            for h in horizons for b in books},
+        "worst 10-day NIFTY move": f"{ret10.min():.1%} ending {ret10.idxmin():%d %b %Y}, "
+                                    f"VIX ×{vr10[ret10.idxmin()]:.2f}",
+        "10-day loss on that window ₹ (book: method)": {
+            b: {m: round(-pnl10[(b, m)][ret10.to_numpy().argmin()]) for m in OPTION_METHODS}
+            for b in books},
+    }
+
+
+REPORTS["options"] = report_options

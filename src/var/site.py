@@ -5,6 +5,7 @@ import re
 from pathlib import Path
 from string import Template
 
+import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 
@@ -132,6 +133,27 @@ def traffic_figure(r: pd.DataFrame) -> go.Figure:
     return fig
 
 
+def options_figure(r: pd.DataFrame) -> go.Figure:
+    """99% 10-day VaR of three NIFTY option books by method (priced at the last close)."""
+    from var.data import DATA_PATH
+    from var.options import BOOKS, book_pnl
+    from var.reports import OPTION_METHODS, option_scenarios
+
+    t = pd.read_parquet(DATA_PATH)["close"][["NIFTY", "INDIAVIX"]].dropna()
+    S, vol = float(t["NIFTY"].iloc[-1]), float(t["INDIAVIX"].iloc[-1]) / 100
+    ret, vr = option_scenarios(10)
+    colors = [plots.SERIES[2], plots.SERIES[0], plots.SERIES[3], plots.TEXT]
+    fig = go.Figure()
+    for m, c in zip(OPTION_METHODS, colors, strict=True):
+        y = [round(-float(np.quantile(book_pnl(make(S), S, vol, ret.to_numpy(), vr.to_numpy(),
+                                                14 / 365, m), 0.01)))
+             for make in BOOKS.values()]
+        fig.add_bar(x=list(BOOKS), y=y, name=m, marker_color=c,
+                    hovertemplate=f"{m}: 99%% 10-day VaR ₹%{{y:,.0f}}<extra></extra>")
+    fig.update_layout(barmode="group")
+    return _scatter_layout(fig, "", "99% 10-day VaR on ₹10 lakh of notional, ₹")
+
+
 SECTIONS = [
     ("VaR calculator",
      "Enter rupee amounts in any of today's NIFTY 50 stocks or the NIFTY and gold ETFs. The page "
@@ -154,6 +176,13 @@ SECTIONS = [
      "more red. The 1000-day VaR breached about as often as promised overall, but its breaches "
      "came in bunches and it went deepest into the red in 2020.",
      traffic_figure),
+    ("Options book",
+     "Three books of one-month NIFTY options on ₹10 lakh of notional, priced at the last close "
+     "with India VIX as the volatility, replayed through every 10-day NIFTY and VIX move since "
+     "2009. "
+     "Greeks approximations (delta; delta-gamma; plus vega) against repricing every option: "
+     "delta-gamma understates the short put's VaR and overstates the short straddle's.",
+     options_figure),
 ]
 
 

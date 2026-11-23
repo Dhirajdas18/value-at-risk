@@ -21,7 +21,7 @@ you enter leaves the page.
 - [x] Expected shortfall at 97.5% and its backtest (Acerbi-Székely)
 - [x] Extreme value theory (peaks over threshold) for 99.9%
 - [x] Risk by holding (component and marginal expected shortfall); historical stress scenarios, also in the calculator
-- [ ] Options: delta-gamma vs full revaluation
+- [x] Options books: delta, delta-gamma and delta-gamma-vega VaR against full repricing
 
 ## Findings
 
@@ -233,12 +233,47 @@ cost. Losses on ₹10 lakh, and as a multiple of each portfolio's 99% one-day hi
   NIFTY and 12% short for gold; for ₹10 lakh, 6% and 46% short. The marginal is the slope at today's mix, and
   the recomputed curve for gold bends upward.
 
+### 7. For option books, delta-gamma VaR erred both ways: 25% too low on a short put, 37% too high on a short straddle
+
+<a href="docs/img/options_var.png"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/img/options_var.png"><img src="docs/img/options_var.gif" alt="99% 10-day VaR of three NIFTY option books by delta, delta-gamma, delta-gamma-vega and full repricing" width="720"></picture></a>
+
+Three books of one-month NIFTY options, each on ₹10 lakh of notional, priced with Black-Scholes at the
+close of 23 November 2026 (NIFTY 25,350, India VIX 17.7% as the volatility, 6.5% rate):
+a **protective put** (the index plus a 5%-out-of-the-money put), a **short 5% OTM put**, and a **short
+straddle** (sold call and put at the money). Each book is replayed through every NIFTY move since 2009, with
+India VIX's move on the same days changing the volatility. The P&L comes four ways: delta (a straight line
+in the move), delta-gamma (a parabola), delta-gamma plus vega, and full repricing of every option.
+
+| 99% VaR, error against full repricing | Full repricing | Delta | Delta-gamma | Delta-gamma-vega |
+|---|---|---|---|---|
+| 1 day, protective put | ₹21,378 | +20% | +12% | +4% |
+| 1 day, short 5% OTM put | ₹7,635 | −53% | −30% | −14% |
+| 1 day, short straddle | ₹11,600 | −79% | −4% | +5% |
+| 10 days, protective put | ₹48,903 | +48% | +21% | +14% |
+| 10 days, short 5% OTM put | ₹33,330 | −76% | −25% | −14% |
+| 10 days, short straddle | ₹80,615 | −98% | +37% | +41% |
+
+<table><tr>
+<td><a href="docs/img/options_payoff.png"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/img/options_payoff.png"><img src="docs/img/options_payoff.gif" alt="Ten-day P&L of a short put and a short straddle against the NIFTY move, by delta, delta-gamma and full repricing"></picture></a></td>
+<td><a href="docs/img/options_error.png"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/img/options_error.png"><img src="docs/img/options_error.gif" alt="Delta-gamma P&L minus full repricing for every 10-day window, against the NIFTY move"></picture></a></td>
+</tr></table>
+
+- **Delta alone is wrong for any book with options:** it put the short straddle's 10-day VaR at ₹1,549
+  against ₹80,615 by repricing.
+- **The parabola's error depends on the book (left):** on falls the short put's real loss curve is steeper
+  than the parabola, and the short straddle's turns into a straight line while the parabola keeps curving.
+  The error grows with the size of the move (right).
+- **Worst 10 days (NIFTY −30.7% to 23 March 2020, VIX ×2.81):** the short put lost ₹2,51,547 by repricing
+  and ₹2,30,595 by delta-gamma; the short straddle ₹2,64,066 by repricing and ₹6,95,653 by delta-gamma
+  (delta showed a gain of ₹41,491).
+- **Adding vega** brought the short put to 14% short, and moved the straddle further out, to 41% over.
+
 ## Quick start
 
 ```bash
 uv sync
 uv run python scripts/fetch_data.py         # Yahoo Finance -> data/prices.parquet
-uv run var report methods                   # also: backtest, fhs, es, evt, decomp; charts -> out/
+uv run var report methods                   # also: backtest, fhs, es, evt, decomp, options; charts -> out/
 uv run python scripts/build_site.py         # dashboard and calculator -> site/index.html
 uv run pytest
 ```
@@ -253,6 +288,8 @@ uv run pytest
 - `src/var/evt.py`: peaks-over-threshold fit (generalised Pareto), VaR, ES and exceedance probabilities.
 - `src/var/decomp.py`: component and marginal risk by holding, incremental ES of a trade, and historical
   stress scenarios with beta proxies for holdings that had no prices then.
+- `src/var/options.py`: Black-Scholes prices and Greeks; option-book P&L by delta, delta-gamma,
+  delta-gamma-vega or full repricing under an index move, a volatility move and time decay.
 - `src/var/var.js`, `calculator.html`: the same methods in the browser; a test runs them through Node
   against Python. Five years of returns are embedded as integers (0.001% units).
 - `src/var/data.py`: Yahoo prices for today's NIFTY 50 and two ETFs since 2007, with known errors
