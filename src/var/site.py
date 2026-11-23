@@ -1,0 +1,147 @@
+"""Interactive dashboard: a live VaR calculator plus charts, as one static page."""
+
+import json
+import re
+from pathlib import Path
+from string import Template
+
+import pandas as pd
+import plotly.graph_objects as go
+
+from var import plots
+
+FONT = "system-ui, -apple-system, \"Segoe UI\", Roboto, sans-serif"
+
+ICON = (
+    "data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E"
+    "%3Cpath d=%22M1 12 5 7l3 3 7-8%22 fill=%22none%22 stroke=%22%232a78d6%22"
+    " stroke-width=%222%22/%3E"
+    "%3C/svg%3E"
+)
+
+def _layout(fig: go.Figure, ytitle: str) -> go.Figure:
+    fig.update_layout(
+        paper_bgcolor=plots.SURFACE,
+        plot_bgcolor=plots.SURFACE,
+        font=dict(family=FONT, color=plots.TEXT_2, size=13),
+        hovermode="x unified",
+        margin=dict(l=56, r=24, t=96, b=40),
+        legend=dict(orientation="h", y=1.02, yanchor="bottom", x=0, xanchor="left"),
+        yaxis=dict(title=ytitle, gridcolor=plots.GRID, zeroline=False, automargin=True),
+        xaxis=dict(
+            gridcolor=plots.GRID,
+            rangeslider=dict(visible=False),
+            rangeselector=dict(
+                buttons=[dict(count=n, label=f"{n}y", step="year", stepmode="backward")
+                         for n in (1, 3, 5)] + [dict(step="all", label="All")],
+                x=1, xanchor="right", y=1.08, yanchor="bottom", bgcolor="white",
+            ),
+        ),
+    )
+    end = max(pd.Timestamp(max(t.x)) for t in fig.data)
+    fig.update_xaxes(range=[end - pd.DateOffset(years=3), end])  # open on the last 3 years
+    return fig
+
+
+def _scatter_layout(fig: go.Figure, xtitle: str, ytitle: str) -> go.Figure:
+    fig.update_layout(
+        paper_bgcolor=plots.SURFACE, plot_bgcolor=plots.SURFACE,
+        font=dict(family=FONT, color=plots.TEXT_2, size=13), hovermode="closest",
+        margin=dict(l=56, r=24, t=56, b=48),
+        legend=dict(orientation="h", y=1.02, yanchor="bottom", x=0, xanchor="left"),
+        xaxis=dict(title=xtitle, gridcolor=plots.GRID, zeroline=False, rangemode="tozero"),
+        yaxis=dict(title=ytitle, gridcolor=plots.GRID, zeroline=False, automargin=True),
+    )
+    return fig
+
+
+CALCULATOR = Path(__file__).with_name("calculator.html").read_text(encoding="utf-8")
+JS = Path(__file__).with_name("var.js").read_text(encoding="utf-8")
+LABELS = {"NIFTYBEES": "NIFTY 50 ETF (NIFTYBEES)", "GOLDBEES": "Gold ETF (GOLDBEES)"}
+CALC_DAYS = 1250  # five years of trading days embedded in the page
+SCALE = 1e-5  # returns stored as integers in units of 0.001%
+
+
+def calculator_data(r: pd.DataFrame) -> dict:
+    """The last five years of daily returns for the calculator, as integers (null = no price)."""
+    from var.data import ETFS, SYMBOLS
+
+    symbols = ETFS + sorted(SYMBOLS)
+    recent = r[symbols].iloc[-CALC_DAYS:]
+    data = {s: [None if pd.isna(x) else int(round(x / SCALE)) for x in recent[s]]
+            for s in symbols}
+    return {"symbols": symbols, "labels": LABELS, "last": f"{recent.index[-1]:%d %b %Y}",
+            "r": data}
+
+
+def calculator_section(r: pd.DataFrame) -> str:
+    return (CALCULATOR.replace("$js", JS)
+            .replace("$data", json.dumps(calculator_data(r), separators=(",", ":"))))
+
+
+def methods_figure(r: pd.DataFrame) -> go.Figure:
+    """99% one-day VaR and expected shortfall by method for three ₹10 lakh portfolios."""
+    from var.reports import CAPITAL, PORTFOLIOS, START, method_table
+
+    r = r[r.index >= START]
+    names = ["historical", "normal", "Monte Carlo, Student-t"]
+    colors = [plots.TEXT, plots.SERIES[0], plots.SERIES[1]]
+    tables = {p: method_table(r, h) for p, h in PORTFOLIOS.items()}
+    fig = go.Figure()
+    for m, c in zip(names, colors, strict=True):
+        fig.add_bar(x=list(PORTFOLIOS), y=[round(tables[p][m][0] * CAPITAL) for p in PORTFOLIOS],
+                    name=f"VaR, {m}", marker_color=c,
+                    hovertemplate=f"{m}: 99%% VaR ₹%{{y:,.0f}}<extra></extra>")
+    fig.update_layout(barmode="group")
+    return _scatter_layout(fig, "", "99% one-day VaR on ₹10 lakh, ₹")
+
+
+SECTIONS = [
+    ("VaR calculator",
+     "Enter rupee amounts in any of today's NIFTY 50 stocks or the NIFTY and gold ETFs. The page "
+     "replays the chosen window of past daily returns on today's holdings: the historical loss "
+     "exceeded on only 1% of days is the 99% VaR, and the average loss on those days the expected "
+     "shortfall. The normal method assumes a bell curve; Cornish-Fisher corrects it for skew and "
+     "fat tails when they aren't too extreme.",
+     calculator_section),
+    ("Methods compared",
+     "Three ₹10 lakh portfolios, daily returns since January 2009. A normal curve puts the 99% "
+     "loss lower than history does; Monte Carlo with fat-tailed (Student-t) draws comes close to "
+     "history.",
+     methods_figure),
+]
+
+
+REPO = "https://github.com/Dhirajdas18/value-at-risk"
+PAGE = Template((Path(__file__).with_name("page.html")).read_text(encoding="utf-8"))
+
+
+def _slug(title: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")
+
+
+def build_html(data: pd.DataFrame) -> str:
+    parts, nav, loaded = [], [], False
+    for title, blurb, make in SECTIONS:
+        out = make(data)
+        if isinstance(out, str):
+            body = out
+        else:
+            body = out.to_html(full_html=False, include_plotlyjs=False if loaded else "cdn",
+                               config={"displaylogo": False, "responsive": True})
+            loaded = True
+        sid = _slug(title)
+        nav.append(f'<li><a href="#{sid}">{title}</a></li>')
+        parts.append(f'<section id="{sid}">\n<h2>{title}</h2>\n<p>{blurb}</p>\n{body}\n</section>')
+    if not loaded:  # the page script expects Plotly
+        parts.append('<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>')
+    return PAGE.substitute(
+        icon=ICON, font=FONT, repo=REPO, updated=f"{data.index[-1]:%d %b %Y}",
+        surface=plots.SURFACE, text=plots.TEXT, text2=plots.TEXT_2, grid=plots.GRID,
+        accent=plots.SERIES[0], d_surface=plots.DARK[plots.SURFACE], d_text=plots.DARK[plots.TEXT],
+        d_text2=plots.DARK[plots.TEXT_2], d_grid=plots.DARK[plots.GRID],
+        d_accent=plots.DARK[plots.SERIES[0]],
+        dark=json.dumps({k.lower(): v for k, v in plots.DARK.items()}),
+        dark_lines=json.dumps({k.lower(): v for k, v in plots.DARK_LINES.items()}),
+        nav="\n".join(nav), sections="\n".join(parts),
+    )

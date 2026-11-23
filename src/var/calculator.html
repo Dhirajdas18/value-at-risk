@@ -1,0 +1,67 @@
+<form class="calc" id="calc" onsubmit="return false">
+  <div class="holdings" id="rows"></div>
+  <div class="calc-controls">
+    <button type="button" id="add">Add holding</button>
+    <label>Window <select id="win">
+      <option value="250">1 year</option><option value="750" selected>3 years</option><option value="1250">5 years</option>
+    </select></label>
+    <label>Confidence <select id="conf">
+      <option value="0.95">95%</option><option value="0.975">97.5%</option><option value="0.99" selected>99%</option>
+    </select></label>
+  </div>
+</form>
+<div class="table-scroll"><table class="data">
+  <thead><tr><th scope="col">Method</th><th scope="col">1-day VaR</th><th scope="col">1-day expected shortfall</th></tr></thead>
+  <tbody id="calc-out"></tbody>
+</table></div>
+<p class="note" id="calc-note" aria-live="polite"></p>
+<script>
+$js
+const DATA = $data;
+(() => {
+  const SCALE = 1e-5;
+  const returns = Object.fromEntries(Object.entries(DATA.r).map(([k, v]) => [k, v.map((x) => x === null ? null : x * SCALE)]));
+  const label = (s) => DATA.labels[s] || s;
+  const rows = document.getElementById("rows"), out = document.getElementById("calc-out");
+  const note = document.getElementById("calc-note");
+  const rupees = (x) => Number.isFinite(x) ? "₹" + Math.round(x).toLocaleString("en-IN") : "–";
+  const addRow = (sym, amount) => {
+    const row = document.createElement("div");
+    row.className = "holding";
+    const options = DATA.symbols.map((s) => `<option value="${s}"${s === sym ? " selected" : ""}>${label(s)}</option>`).join("");
+    row.innerHTML = `<select aria-label="Holding">${options}</select>` +
+      `<input type="number" min="0" step="1000" inputmode="numeric" autocomplete="off" aria-label="Amount in rupees" value="${amount}">` +
+      `<button type="button" class="remove" aria-label="Remove holding">Remove</button>`;
+    row.querySelector(".remove").addEventListener("click", () => { row.remove(); update(); });
+    rows.appendChild(row);
+  };
+  const update = () => {
+    const holdings = {};
+    rows.querySelectorAll(".holding").forEach((row) => {
+      const s = row.querySelector("select").value, a = parseFloat(row.querySelector("input").value);
+      if (a > 0) holdings[s] = (holdings[s] || 0) + a;
+    });
+    const total = Object.values(holdings).reduce((a, b) => a + b, 0);
+    if (!total) { out.innerHTML = ""; note.textContent = "Add an amount to see the risk."; return; }
+    const win = parseInt(document.getElementById("win").value, 10);
+    const alpha = parseFloat(document.getElementById("conf").value);
+    const recent = Object.fromEntries(Object.entries(returns).map(([k, v]) => [k, v.slice(-win)]));
+    const r = portfolio(recent, holdings);
+    if (r.length < 60) { out.innerHTML = ""; note.textContent = "Not enough shared history for these holdings in this window."; return; }
+    const m = moments(r), valid = cfValid(m.skew, m.kurt);
+    const res = [["Historical", historical(r, alpha)], ["Normal", normal(m.mean, m.sd, alpha)],
+      ["Cornish-Fisher", valid ? cornishFisher(m.mean, m.sd, m.skew, m.kurt, alpha) : null]];
+    out.innerHTML = res.map(([name, v]) => `<tr><th scope="row">${name}</th>` + (v
+      ? `<td>${rupees(v[0] * total)}</td><td>${rupees(v[1] * total)}</td>`
+      : `<td colspan="2">not valid here: the tails are too fat (excess kurtosis ${m.kurt.toFixed(1)})</td>`) + "</tr>").join("");
+    const ten = historical(horizon(r, 10), alpha)[0], one = historical(r, alpha)[0];
+    note.textContent = `${r.length} trading days of shared history, up to ${DATA.last}. ` +
+      `10-day historical VaR: ${rupees(ten * total)}; 1-day × √10 would say ${rupees(one * Math.sqrt(10) * total)}.`;
+  };
+  document.getElementById("add").addEventListener("click", () => { addRow(DATA.symbols[0], 100000); update(); });
+  document.getElementById("calc").addEventListener("input", update);
+  document.getElementById("calc").addEventListener("change", update);
+  addRow("NIFTYBEES", 700000); addRow("GOLDBEES", 300000);
+  update();
+})();
+</script>

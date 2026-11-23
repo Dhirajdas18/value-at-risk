@@ -1,0 +1,43 @@
+[project]
+name = "value-at-risk"
+version = "0.1.0"
+description = "Value at Risk and expected shortfall on NSE portfolios: methods, backtests, extreme tails and a live in-browser calculator."
+readme = "README.md"
+license = "MIT"
+authors = [{ name = "Dhirajdas18" }]
+requires-python = ">=3.12"
+dependencies = [
+    "matplotlib>=3.11.2",
+    "numpy>=2.5.5",
+    "pandas>=3.1.1",
+    "pillow>=13.0.0",
+    "plotly>=7.1.0",
+    "pyarrow>=26.0.1",
+    "scipy>=1.18.1",
+    "yfinance>=1.8.0",
+]
+
+[project.scripts]
+var = "var.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "ruff",
+]
+
+[build-system]
+requires = ["uv_build>=0.13.7,<0.14.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "var"
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

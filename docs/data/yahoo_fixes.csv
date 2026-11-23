@@ -1,0 +1,15 @@
+symbol,date,action,reason
+ADANIENT,2015-06-03,zero,NSE capital event: scheme of arrangement (Yahoo unadjusted)
+ADANIENT,2018-04-05,zero,NSE capital event: scheme of arrangement (Yahoo unadjusted)
+ADANIENT,2018-09-06,zero,NSE capital event: scheme of arrangement (Yahoo unadjusted)
+TMPV,2025-10-14,zero,NSE capital event: demerger of Tata Motors CV business (Yahoo unadjusted)
+TRENT,2026-01-01,zero,price x 0.67 overnight: shape of a 1:2 bonus left unadjusted (NSE lists the bonus on 2026-06-04)
+BAJAJ-AUTO,2008-05-26,start,Bajaj Auto demerger: Yahoo joins the old company's history (now Bajaj Holdings) before this date
+BAJAJFINSV,2008-05-26,start,listed on demerger from Bajaj Auto; earlier Yahoo prices are not this company
+NESTLEIND,2010-01-08,start,Yahoo prices before this date are stale (flat at 527) and on another scale
+GRASIM,2010-05-26,zero,NSE capital event: demerger of the cement business (Samruddhi Cement)
+NIFTYBEES,2010-10-06,blank,bad print: 52.5 between 62.1 and 61.6
+NIFTYBEES,2019-12-19,blank,bad print at a tenth of the price
+NIFTYBEES,2019-12-20,blank,bad print at a tenth of the price
+GOLDBEES,2019-12-19,blank,bad print at a hundredth of the price
+GOLDBEES,2019-12-20,blank,bad print at a hundredth of the price

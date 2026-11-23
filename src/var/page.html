@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Value at Risk and expected shortfall on NSE portfolios, with a live calculator: methods, backtests, extreme tails and stress tests.">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="$surface" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="$d_surface" media="(prefers-color-scheme: dark)">
+<link rel="preconnect" href="https://cdn.plot.ly" crossorigin>
+<title>Value at Risk</title>
+<link rel="icon" href="$icon">
+<style>
+  :root {
+    --surface: $surface; --surface-2: #f3f2ee; --text: $text; --text-2: $text2;
+    --grid: $grid; --accent: $accent;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --surface: $d_surface; --surface-2: #222220; --text: $d_text; --text-2: $d_text2;
+      --grid: $d_grid; --accent: $d_accent;
+    }
+  }
+  * { box-sizing: border-box; }
+  :root { color-scheme: light dark; }
+  body { touch-action: manipulation; }
+  .skip { position: absolute; left: 16px; top: -48px; padding: 8px 12px; background: var(--text);
+          color: var(--surface); border-radius: 4px; z-index: 20; }
+  .skip:focus { top: 8px; }
+  html { scroll-padding-top: 64px; }
+  body { margin: 0; background: var(--surface); color: var(--text);
+         font: 16px/1.55 $font; -webkit-font-smoothing: antialiased; }
+  ::selection { background: var(--accent); color: var(--surface); }
+  a { color: inherit; text-decoration-color: var(--grid); text-underline-offset: 3px; }
+  a:hover { text-decoration-color: currentColor; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 0 16px; }
+  header { padding: 40px 0 24px; }
+  h1 { font-size: 2rem; line-height: 1.15; letter-spacing: -0.02em; margin: 0 0 12px; text-wrap: balance; }
+  .lede { font-size: 1.125rem; color: var(--text-2); max-width: 62ch; margin: 0 0 16px; }
+  .meta { font-size: 0.875rem; color: var(--text-2); margin: 0; display: flex; flex-wrap: wrap; gap: 4px 16px; }
+  nav { position: sticky; top: 0; z-index: 10; background: var(--surface);
+        border-bottom: 1px solid var(--grid); }
+  nav ul { list-style: none; margin: 0 auto; padding: 0 16px; max-width: 1040px; display: flex; gap: 4px;
+           overflow-x: auto; scrollbar-width: none; }
+  nav ul::-webkit-scrollbar { display: none; }
+  nav a { display: block; padding: 12px 10px; font-size: 0.875rem; color: var(--text-2);
+          text-decoration: none; white-space: nowrap; border-bottom: 2px solid transparent; }
+  nav a:hover { color: var(--text); }
+  nav a[aria-current="true"] { color: var(--text); border-bottom-color: var(--accent); }
+  section { padding: 40px 0 8px; border-top: 1px solid var(--grid); }
+  section:first-of-type { border-top: 0; }
+  h2:focus { outline: none; }
+  h2 { font-size: 1.25rem; line-height: 1.3; margin: 0 0 8px; text-wrap: balance; }
+  section > p { color: var(--text-2); max-width: 70ch; margin: 0 0 12px; }
+  .table-scroll { overflow-x: auto; margin: 8px 0 24px; }
+  table.data { border-collapse: collapse; width: 100%; min-width: 640px; font-size: 0.875rem;
+               font-variant-numeric: tabular-nums; }
+  table.data th, table.data td { padding: 10px 12px; text-align: right; border-bottom: 1px solid var(--grid);
+                                 white-space: nowrap; }
+  table.data th:first-child, table.data td:first-child { text-align: left; position: sticky; left: 0;
+                                                         background: var(--surface); }
+  table.data thead th { color: var(--text-2); font-weight: 500; }
+  table.data td { color: var(--text); }
+  table.data td.text, table.data th .text { text-align: left; display: block; }
+  .note { font-size: 0.875rem; color: var(--text-2); }
+  .unit { font-weight: 400; color: var(--text-2); font-size: 0.8125rem; margin-left: 6px; }
+  footer { border-top: 1px solid var(--grid); margin-top: 32px; padding: 24px 0 48px;
+           font-size: 0.875rem; color: var(--text-2); }
+  footer p { margin: 0 0 6px; max-width: 75ch; }
+  .js-plotly-plot .plotly .modebar { opacity: 0.5; }
+  .calc { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px 16px; margin: 8px 0 16px; }
+  .calc label { display: flex; flex-direction: column; gap: 4px; font-size: 0.875rem; color: var(--text-2); }
+  .calc input { font: inherit; font-variant-numeric: tabular-nums; color: var(--text); background: var(--surface); border: 1px solid var(--grid); border-radius: 6px; padding: 8px 10px; }
+  .calc input:focus-visible { border-color: var(--accent); }
+  .holdings { display: grid; gap: 8px; grid-column: 1 / -1; }
+  .holding { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) auto; gap: 8px; }
+  .calc select, .calc button { font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--grid); border-radius: 6px; padding: 8px 10px; }
+  .calc button { cursor: pointer; touch-action: manipulation; }
+  @media (hover: hover) and (pointer: fine) { .calc button:hover { border-color: var(--text-2); } }
+  @media (max-width: 480px) { .holding { grid-template-columns: minmax(0, 1fr) auto; } .holding select { grid-column: 1 / -1; } }
+  .calc-controls { display: flex; flex-wrap: wrap; gap: 12px 16px; align-items: end; grid-column: 1 / -1; }
+  .calc-controls label { display: flex; flex-direction: column; gap: 4px; font-size: 0.875rem; color: var(--text-2); }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to the charts</a>
+<div class="wrap">
+<header>
+<h1>Value at Risk</h1>
+<p class="lede">How much a portfolio can lose on a bad day, measured the ways risk desks do and tested
+on NSE data since 2009. Enter your own holdings in the calculator; it runs in your browser.</p>
+<p class="meta"><span>Updated $updated</span><span>Data: Yahoo Finance</span>
+<a href="$repo">Code and findings on GitHub</a></p>
+</header>
+</div>
+<nav aria-label="Sections"><ul>
+$nav
+</ul></nav>
+<main id="main" class="wrap">
+$sections
+</main>
+<footer class="wrap">
+<p>Rebuilt every week by GitHub Actions from fresh prices. The calculator runs entirely in your browser;
+nothing you enter leaves it.</p>
+<p>Prices: Yahoo Finance, with known errors repaired (see the repository). Today's NIFTY 50 members.
+For research and education, not investment advice.</p>
+</footer>
+<script>
+const DARK = $dark;
+const DARK_LINES = $dark_lines;
+const media = matchMedia("(prefers-color-scheme: dark)");
+const swap = (c, line) => {
+  if (typeof c !== "string" || !media.matches) return c;
+  const k = c.toLowerCase();
+  return (line && DARK_LINES[k]) || DARK[k] || c;
+};
+const deepMap = (o, line = false) => Array.isArray(o) ? o.map((v) => deepMap(v, line))
+  : o && typeof o === "object"
+    ? Object.fromEntries(Object.entries(o).map(([k, v]) => [k, deepMap(v, line || k === "line")]))
+    : swap(o, line);
+
+document.querySelectorAll(".plotly-graph-div").forEach((gd) => {
+  const original = { data: JSON.parse(JSON.stringify(gd.data)), layout: JSON.parse(JSON.stringify(gd.layout)) };
+  const theme = () => {
+    const layout = deepMap(original.layout);
+    layout.xaxis = Object.assign({}, layout.xaxis, { range: gd.layout.xaxis && gd.layout.xaxis.range });
+    const visible = gd.data.map((t) => t.visible);
+    const data = deepMap(original.data).map((t, i) => Object.assign(t, { visible: visible[i] }));
+    return Plotly.react(gd, data, layout);
+  };
+  media.addEventListener("change", theme);
+
+  // Fit the y-axis to the visible traces and date range (Plotly keeps the full range).
+  if (!gd.data.some((t) => t.type === "scatter")) { if (media.matches) theme(); return; }
+  // Only time series (date strings on x) are refitted; value-vs-value charts keep autorange.
+  const series = gd.data.some((t) => t.type === "scatter" && typeof (t.x || [])[0] === "string");
+  const log = gd.layout.yaxis && gd.layout.yaxis.type === "log";  // log ranges are in log10 units
+  let busy = false;
+  const fit = () => {
+    if (busy || !series) return;
+    const [x0, x1] = (gd.layout.xaxis.range || []).map(String);
+    let lo = Infinity, hi = -Infinity;
+    gd.data.forEach((t) => {
+      if (t.visible === false || t.visible === "legendonly" || t.type !== "scatter") return;
+      for (let i = 0; i < t.x.length; i++) {
+        if (x0 && (t.x[i] < x0.slice(0, 10) || t.x[i] > x1.slice(0, 10))) continue;
+        if (log && !(t.y[i] > 0)) continue;
+        const v = log ? Math.log10(t.y[i]) : t.y[i];
+        lo = Math.min(lo, v); hi = Math.max(hi, v);
+      }
+    });
+    if (!isFinite(lo)) return;
+    const pad = (hi - lo) * 0.08 || (log ? 0.05 : 1);
+    busy = true;
+    const floor = log || lo < 0 ? lo - pad : Math.max(0, lo - pad);  // don't clip real negatives
+    Plotly.relayout(gd, {"yaxis.range": [floor, hi + pad]})
+      .then(() => { busy = false; });
+  };
+  // Phones: legend below the plot so it can't collide with the symbol menu and zoom buttons.
+  const narrow = matchMedia("(max-width: 640px)");
+  const place = () => Plotly.relayout(gd, narrow.matches
+    ? { "legend.y": -0.12, "legend.yanchor": "top", "margin.b": 96 }
+    : { "legend.y": original.layout.legend.y, "legend.yanchor": "bottom", "margin.b": 40 });
+  narrow.addEventListener("change", place);
+  if (narrow.matches) place();
+  // Refit after x changes only; a box zoom that sets y (yaxis.range[0]/[1]) is the user's choice.
+  gd.on("plotly_relayout", (e) => {
+    const keys = Object.keys(e);
+    if (keys.some((k) => k.startsWith("yaxis.range"))) return;
+    if (keys.some((k) => k.startsWith("xaxis") || k === "autosize")) fit();
+  });
+  gd.on("plotly_update", fit);
+  gd.on("plotly_restyle", fit);  // legend clicks show or hide traces
+  (media.matches ? theme() : Promise.resolve()).then(fit);
+});
+
+// Highlight the section in view in the nav.
+const links = [...document.querySelectorAll("nav a")];
+let jumping = false;  // while a nav click scrolls, keep the clicked link highlighted
+const mark = (id) => links.forEach((a) => {
+      const on = a.hash === "#" + id;
+      a.setAttribute("aria-current", on ? "true" : "false");
+      // Scroll only the nav bar sideways. scrollIntoView would also scroll the page (the nav is
+      // sticky), pulling the reader back up every time a new section becomes active.
+      if (on) {
+        const bar = a.closest("ul");
+        const left = a.offsetLeft - (bar.clientWidth - a.offsetWidth) / 2;
+        bar.scrollTo({ left: Math.max(0, left), behavior: "smooth" });
+      }
+    });
+const spy = new IntersectionObserver((entries) => {
+  if (jumping) return;
+  entries.forEach((e) => { if (e.isIntersecting) mark(e.target.id); });
+}, { rootMargin: "-30% 0px -65% 0px" });
+
+// Nav clicks: jump most of the way instantly, then glide the last stretch, so a far section
+// arrives in about 0.3 s instead of a long smooth scroll past every chart.
+const still = matchMedia("(prefers-reduced-motion: reduce)");
+links.forEach((a) => a.addEventListener("click", (ev) => {
+  const target = document.getElementById(a.hash.slice(1));
+  if (!target) return;
+  ev.preventDefault();
+  const navH = document.querySelector("nav").offsetHeight;
+  const goal = Math.round(target.getBoundingClientRect().top + scrollY - navH);
+  const glide = 480;
+  jumping = true;
+  mark(target.id);
+  if (!still.matches && Math.abs(goal - scrollY) > glide) {
+    scrollTo({ top: goal - Math.sign(goal - scrollY) * glide, behavior: "instant" });
+  }
+  scrollTo({ top: goal, behavior: still.matches ? "instant" : "smooth" });
+  history.replaceState(null, "", a.hash);
+  const done = () => { jumping = false; };
+  if ("onscrollend" in window) addEventListener("scrollend", done, { once: true });
+  else setTimeout(done, 600);
+  target.querySelector("h2")?.setAttribute("tabindex", "-1");
+  target.querySelector("h2")?.focus({ preventScroll: true });
+}));
+document.querySelectorAll("main section").forEach((s) => spy.observe(s));
+</script>
+</body>
+</html>
