@@ -14,21 +14,27 @@ from var.data import (
 )
 
 
-def main() -> None:
-    out = Path(sys.argv[1]) if len(sys.argv) > 1 else DATA_PATH
-    df, missing = None, ["everything"]
-    for attempt in range(4):  # Yahoo occasionally drops a ticker or errors; retry before giving up
+def download(fetch, find_missing, attempts: int = 4):
+    """Call `fetch` until `find_missing` reports nothing absent; exit rather than write a gap.
+
+    Yahoo occasionally drops a ticker or errors, so each download gets a few tries."""
+    missing = ["everything"]
+    for attempt in range(attempts):
         if attempt:
-            time.sleep(5)
+            time.sleep(5 * attempt)
         try:
-            df = fetch_yfinance()
+            df = fetch()
         except Exception as exc:  # network or Yahoo error: retry
             print(f"  download attempt {attempt + 1} failed: {exc}")
             continue
-        if not (missing := missing_symbols(df)):
-            break
-    if df is None or missing:
-        sys.exit(f"download failed for {missing}; not writing an incomplete table")
+        if not (missing := find_missing(df)):
+            return df
+    sys.exit(f"download failed for {missing}; not writing an incomplete table")
+
+
+def main() -> None:
+    out = Path(sys.argv[1]) if len(sys.argv) > 1 else DATA_PATH
+    df = download(fetch_yfinance, missing_symbols)
     out.parent.mkdir(parents=True, exist_ok=True)
     df.to_parquet(out)
     span = f"{df.index.min():%Y-%m-%d} to {df.index.max():%Y-%m-%d}"
